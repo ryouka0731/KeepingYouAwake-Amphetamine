@@ -95,15 +95,16 @@ jobs:
             -enableCodeCoverage YES \
             -resultBundlePath build/TestResult.xcresult
 
-      - name: Generate coverage report
+      - name: Generate coverage summary
         # Run even if individual tests failed so a regression run still
         # reports coverage on whatever DID execute. `xccov` reads from
         # the resultBundle that xcodebuild always writes, regardless of
         # test pass/fail.
+        #
+        # Split out from the PR-comment step so the step summary is
+        # ALWAYS emitted — even on fork PRs / Dependabot PRs where
+        # GITHUB_TOKEN is read-only and `gh pr comment` would 403.
         if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           if [ ! -d build/TestResult.xcresult ]; then
@@ -114,9 +115,17 @@ jobs:
           xcrun xccov view --report --json build/TestResult.xcresult > coverage.json
 
           python3 - <<'PY'
-          import json, os
-          with open("coverage.json") as f:
-              data = json.load(f)
+          import json, os, sys
+
+          # Defensive read: a truncated / corrupted xccov output should
+          # warn-and-continue, not crash the job. Mirrors the
+          # `No xcresult bundle found` fast-path above. (sourcery #127)
+          try:
+              with open("coverage.json") as f:
+                  data = json.load(f)
+          except (OSError, json.JSONDecodeError) as e:
+              print(f"::warning::Could not read coverage.json: {e}")
+              sys.exit(0)
 
           # `xccov view --report --json` returns a tree with `targets`
           # (list of dicts with name, coveredLines, executableLines,
@@ -174,28 +183,54 @@ jobs:
               with open(step_summary, "a") as f:
                   f.write(body + "\n")
 
+          # Save body for the PR-comment step. Existence of this file
+          # is also what gates that step's `gh` calls.
           with open("coverage_body.md", "w") as f:
               f.write(body)
           PY
+
+      - name: Post coverage PR comment
+        # Gated separately from the summary step because:
+        #   1. Fork PRs get a READ-ONLY GITHUB_TOKEN — `gh pr comment`
+        #      and `gh api -X PATCH …/issues/comments` both 403 and
+        #      would fail the whole job. (cubic #187)
+        #   2. Dependabot PRs are treated the same way by GitHub
+        #      (read-only token by default).
+        #   3. push-to-main has no `pull_request.number`, so there's
+        #      no PR to comment on.
+        # The step summary above is always written regardless.
+        if: >-
+          always() &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.fork == false &&
+          github.actor != 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ ! -f coverage_body.md ]; then
+            echo "No coverage body produced (xcresult or JSON was missing); skipping PR comment"
+            exit 0
+          fi
 
           # Upsert the PR comment so each PR has exactly one coverage
           # comment that gets updated, not one-per-CI-run accumulating
           # noise. Match by the `<!-- coverage-report -->` HTML-comment
           # marker that the Python block puts on the first line.
-          # Only runs on pull_request events — `PR_NUMBER` is empty on
-          # push-to-main, so the whole block is skipped.
-          if [ -n "${PR_NUMBER:-}" ]; then
-            EXISTING="$(gh api \
-              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-              --jq '.[] | select(.body | startswith("<!-- coverage-report -->")) | .id' \
-              | head -n 1)"
-            if [ -n "$EXISTING" ]; then
-              gh api -X PATCH \
-                "repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING}" \
-                -f body=@coverage_body.md
-            else
-              gh pr comment "${PR_NUMBER}" --body-file coverage_body.md
-            fi
+          # `--paginate` walks past the default 30-comment first page —
+          # without it, the marker scan misses the old comment on busy
+          # PRs and duplicates fire. (cubic #189)
+          EXISTING="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.body | startswith("<!-- coverage-report -->")) | .id' \
+            | head -n 1)"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING}" \
+              -f body=@coverage_body.md
+          else
+            gh pr comment "${PR_NUMBER}" --body-file coverage_body.md
           fi
 
       - name: Upload xcresult bundle
