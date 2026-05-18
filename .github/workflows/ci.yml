@@ -443,6 +443,69 @@ jobs:
           fi
           echo "PASS: activity.jsonl is well-formed JSONL with expected keys"
 
+          echo "--- Expiration path (natural timer end) ---"
+          # Activate via URL scheme with a very short window so the timer
+          # naturally expires inside this step. 4 seconds is enough for KYA
+          # to dispatch caffeinate (`-di -t 4 -w …`) and let it finish on
+          # its own. We then wait long enough for the log entry to have
+          # both `endedAt` and `endedReason` written.
+          #
+          # This sub-section runs AFTER the URL-scheme + CLI cancel paths
+          # so `tail -n 1 "$LOG"` deterministically picks up the
+          # naturally-expired entry rather than an earlier user-cancelled
+          # one. AC for issue #85: natural expiration writes
+          # `endedReason: "expired"` (constant
+          # KYAActivityLogEndedReasonExpired in
+          # Packages/KYAApplicationSupport/Sources/KYAApplicationSupport/KYAActivityLogger.m).
+          open "keepingyouawake:///activate?seconds=4"
+          # Wait for the activate to land + for caffeinate to spawn so we
+          # know the session actually started (otherwise we'd false-pass
+          # on a no-op).
+          sleep 2
+          if ! pgrep -f "caffeinate.*-di" >/dev/null; then
+            echo "::error::caffeinate did not spawn for the 4s expiry test"
+            ps -axww -o pid,ppid,command | grep -i -E '(KeepingYouAwake|caffeinate)' || true
+            exit 1
+          fi
+
+          # Wait for natural expiry plus log-write headroom. 4s timer +
+          # 2s pre-check + 6s post-wait = 8s total wall time after
+          # activate vs a 4s caffeinate window — 4s of headroom is
+          # comfortable for the log write to land.
+          sleep 6
+
+          if pgrep -f "caffeinate.*-di" >/dev/null; then
+            echo "::error::caffeinate still running 8s after a 4s session"
+            ps -axww -o pid,ppid,command | grep -i -E '(KeepingYouAwake|caffeinate)' || true
+            exit 1
+          fi
+
+          # The most-recently-written entry should be closed with
+          # endedReason=expired. Constant value pinned from
+          # KYAActivityLogger.m line 19:
+          #   NSString * const KYAActivityLogEndedReasonExpired = @"expired";
+          LATEST=$(tail -n 1 "$LOG")
+          echo "Latest activity-log entry: $LATEST"
+
+          EXPECTED_REASON='expired'
+          if ! echo "$LATEST" | jq -e --arg r "$EXPECTED_REASON" '.endedReason == $r' >/dev/null; then
+            echo "::error::Expected endedReason=$EXPECTED_REASON on naturally-expired session, got:"
+            echo "$LATEST" | jq .
+            exit 1
+          fi
+
+          # Spot-check endedAt is present and after startedAt (sanity).
+          # ISO-8601 strings sort lexically the same way they sort
+          # chronologically when both are in UTC ('Z' suffix), which is
+          # what NSISO8601DateFormatter emits by default.
+          if ! echo "$LATEST" | jq -e 'has("endedAt") and has("startedAt") and (.endedAt >= .startedAt)' >/dev/null; then
+            echo "::error::Expired entry missing endedAt or out-of-order timestamps:"
+            echo "$LATEST" | jq .
+            exit 1
+          fi
+
+          echo "PASS: natural-expiry session wrote endedReason=$EXPECTED_REASON with valid endedAt"
+
           # Quit the app cleanly
           osascript -e 'tell application "KeepingYouAwake" to quit' || \
             killall KeepingYouAwake || true
