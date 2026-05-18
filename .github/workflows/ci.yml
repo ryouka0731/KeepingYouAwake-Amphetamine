@@ -62,6 +62,14 @@ jobs:
   unit-test:
     name: Unit tests
     runs-on: macos-14
+    # `pull-requests: write` is needed by the coverage step to upsert
+    # the per-PR coverage comment via `gh pr comment` / `gh api`.
+    # `contents: read` is the default for actions/checkout — pinned
+    # explicitly here because declaring `permissions:` at all narrows
+    # the default GITHUB_TOKEN scope.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -73,16 +81,128 @@ jobs:
         # Packages/ directories was tried earlier but produced
         # duplicate test runs that contaminated each other through
         # NSUserDefaults state — drop it.
+        #
+        # `-enableCodeCoverage YES` collects per-target line coverage
+        # into the resultBundle so the next step can summarise it
+        # via `xcrun xccov view --report --json` (issue #85, goal 5).
         run: |
           set -o pipefail
           xcodebuild test $XCODEBUILD_ARGS -configuration Debug \
+            -enableCodeCoverage YES \
             -resultBundlePath build/TestResult.xcresult \
             | xcbeautify --renderer github-actions || \
           xcodebuild test $XCODEBUILD_ARGS -configuration Debug \
+            -enableCodeCoverage YES \
             -resultBundlePath build/TestResult.xcresult
 
-      - name: Upload xcresult bundle on failure
-        if: failure()
+      - name: Generate coverage report
+        # Run even if individual tests failed so a regression run still
+        # reports coverage on whatever DID execute. `xccov` reads from
+        # the resultBundle that xcodebuild always writes, regardless of
+        # test pass/fail.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ ! -d build/TestResult.xcresult ]; then
+            echo "::warning::No xcresult bundle found; skipping coverage report"
+            exit 0
+          fi
+
+          xcrun xccov view --report --json build/TestResult.xcresult > coverage.json
+
+          python3 - <<'PY'
+          import json, os
+          with open("coverage.json") as f:
+              data = json.load(f)
+
+          # `xccov view --report --json` returns a tree with `targets`
+          # (list of dicts with name, coveredLines, executableLines,
+          # lineCoverage). Schema has been stable since Xcode 11; we
+          # still default-guard every field so a future Xcode bump that
+          # renames or drops a key fails soft (zero counts) instead of
+          # crashing the job.
+          targets = data.get("targets", []) or []
+          rows = []
+          total_covered = 0
+          total_executable = 0
+          for t in targets:
+              name = t.get("name", "<unknown>")
+              covered = int(t.get("coveredLines", 0) or 0)
+              executable = int(t.get("executableLines", 0) or 0)
+              pct = (covered / executable * 100.0) if executable else 0.0
+              rows.append((name, covered, executable, pct))
+              total_covered += covered
+              total_executable += executable
+
+          overall = (
+              total_covered / total_executable * 100.0
+              if total_executable else 0.0
+          )
+
+          sha = os.environ.get("GITHUB_SHA", "")[:7]
+          md = [
+              "<!-- coverage-report -->",
+              "## Code coverage",
+              "",
+              (
+                  f"**Overall:** {total_covered:,} / {total_executable:,} "
+                  f"lines covered (**{overall:.2f}%**)"
+              ),
+              "",
+              "| Target | Covered | Total | % |",
+              "|---|---:|---:|---:|",
+          ]
+          if rows:
+              for name, c, e, p in sorted(rows, key=lambda r: -r[3]):
+                  md.append(f"| {name} | {c:,} | {e:,} | {p:.2f}% |")
+          else:
+              md.append("| _(no targets reported)_ | 0 | 0 | 0.00% |")
+          md.append("")
+          md.append(
+              f"_Generated from `build/TestResult.xcresult` on {sha}._"
+          )
+
+          body = "\n".join(md)
+
+          # Always emit to the Actions step summary so the report is
+          # visible on push-to-main runs too (not just PRs).
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a") as f:
+                  f.write(body + "\n")
+
+          with open("coverage_body.md", "w") as f:
+              f.write(body)
+          PY
+
+          # Upsert the PR comment so each PR has exactly one coverage
+          # comment that gets updated, not one-per-CI-run accumulating
+          # noise. Match by the `<!-- coverage-report -->` HTML-comment
+          # marker that the Python block puts on the first line.
+          # Only runs on pull_request events — `PR_NUMBER` is empty on
+          # push-to-main, so the whole block is skipped.
+          if [ -n "${PR_NUMBER:-}" ]; then
+            EXISTING="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --jq '.[] | select(.body | startswith("<!-- coverage-report -->")) | .id' \
+              | head -n 1)"
+            if [ -n "$EXISTING" ]; then
+              gh api -X PATCH \
+                "repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING}" \
+                -f body=@coverage_body.md
+            else
+              gh pr comment "${PR_NUMBER}" --body-file coverage_body.md
+            fi
+          fi
+
+      - name: Upload xcresult bundle
+        # Always upload so a follow-up can inspect coverage details
+        # locally (`xccov view --file …`) without re-running CI. The
+        # bundle is small (a few MB) and retention is short.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: xcresult
