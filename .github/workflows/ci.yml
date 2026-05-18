@@ -537,19 +537,16 @@ jobs:
     # canonical source, not this workflow.
     name: Sparkle appcast smoke
     runs-on: ubuntu-latest
-    # Only run on PRs that touch Sparkle-relevant paths + on
-    # every push to main. Doc-only PRs don't need to re-verify
-    # the signing/publishing chain. Push-to-main runs catch the
-    # case where a release publishes a new dmg and appcast.yml
-    # regenerates the appcast.
-    if: >-
-      github.event_name == 'push' ||
-      contains(toJson(github.event.pull_request.files.*.filename), 'Info.plist') ||
-      contains(toJson(github.event.pull_request.files.*.filename), 'KYAAppUpdater') ||
-      contains(toJson(github.event.pull_request.files.*.filename), 'appcast') ||
-      contains(toJson(github.event.pull_request.files.*.filename), 'sparkle') ||
-      contains(toJson(github.event.pull_request.files.*.filename), 'release.yml') ||
-      contains(toJson(github.event.pull_request.files.*.filename), 'ci.yml')
+    # Runs on every PR + push-to-main (no job-level path filter).
+    # `github.event.pull_request.files` is NOT a valid GHA
+    # expression context — it resolves to null, so any
+    # `contains(toJson(...files...), ...)` filter would silently
+    # skip the job on every PR. Workflow-level `on.pull_request.paths`
+    # would work, but is per-workflow not per-job, and the job
+    # already runs in <90s on ubuntu-latest — not worth splitting
+    # into a separate workflow file. Belt-and-suspenders: an
+    # unrelated PR that incidentally regresses the Sparkle
+    # plumbing still gets caught.
     steps:
       - uses: actions/checkout@v4
 
