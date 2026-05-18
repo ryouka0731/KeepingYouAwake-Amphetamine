@@ -612,6 +612,13 @@ jobs:
           PY
 
       - name: Fetch + parse appcast
+        # Well-formedness + enclosure-count check is done in pure
+        # Python (ElementTree). `xmllint` is NOT pre-installed on
+        # ubuntu-latest (it ships in the libxml2-utils apt package),
+        # and installing it just for these two checks isn't worth
+        # the apt round-trip — ET gives us better error messages
+        # (ParseError carries line/column) and the next step uses
+        # ET anyway.
         run: |
           set -euo pipefail
           FEED='${{ steps.cfg.outputs.feed }}'
@@ -621,18 +628,23 @@ jobs:
           curl -fsSL --retry 3 --retry-delay 2 -o appcast.xml "$FEED"
           ls -la appcast.xml
 
-          # XML well-formed
-          xmllint --noout appcast.xml
-
-          # Must have at least one enclosure. An empty appcast is
-          # a real regression in CI; the bootstrap "no releases
-          # yet" case belongs in a separate workflow.
-          COUNT=$(xmllint --xpath 'count(//item/enclosure)' appcast.xml)
-          echo "Found $COUNT enclosure(s)"
-          if [ "$COUNT" = "0" ]; then
-            echo "::error::Appcast has no enclosures"
-            exit 1
-          fi
+          python3 - <<'PY'
+          import sys
+          from xml.etree import ElementTree as ET
+          try:
+              root = ET.parse("appcast.xml").getroot()
+          except ET.ParseError as e:
+              print(f"::error::Appcast is not well-formed XML: {e}")
+              sys.exit(1)
+          enclosures = root.findall(".//item/enclosure")
+          print(f"Found {len(enclosures)} enclosure(s)")
+          # An empty appcast is a real regression in CI; the
+          # bootstrap "no releases yet" case belongs in a
+          # separate workflow.
+          if not enclosures:
+              print("::error::Appcast has no enclosures")
+              sys.exit(1)
+          PY
 
       - name: Verify every enclosure has a sparkle:edSignature
         # Sparkle 2.x refuses to install unsigned updates, so a
