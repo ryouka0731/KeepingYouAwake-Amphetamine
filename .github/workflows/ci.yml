@@ -18,6 +18,12 @@ env:
     -destination platform=macOS
     CODE_SIGNING_ALLOWED=NO
     CODE_SIGNING_REQUIRED=NO
+  # Minimum overall line-coverage percentage required for the unit-test job
+  # to pass. Baseline at the time this gate landed was 42.17% (see PR #95);
+  # threshold is set ~5 pp below that to absorb normal run-to-run noise
+  # without letting genuine regressions slip through. Raise this number as
+  # the suite grows — the issue #85 long-term aspiration is 60%.
+  MIN_OVERALL_COVERAGE: "37.0"
 
 jobs:
   python-tests:
@@ -187,6 +193,42 @@ jobs:
           # is also what gates that step's `gh` calls.
           with open("coverage_body.md", "w") as f:
               f.write(body)
+
+          # ---- Coverage gate (issue #85, goal 5) -----------------------
+          # Enforce a minimum overall line-coverage % so future PRs can't
+          # silently degrade what tests we have. Per-target floors are
+          # intentionally deferred — overall-only keeps the gate simple
+          # and gives target-level moves room to rebalance.
+          #
+          # Soft-fail (exit 0 with ::warning::) when coverage data is
+          # genuinely unavailable (`total_executable == 0`) — failing CI
+          # in that case would punish runs where xccov emitted an empty
+          # shell, which is a tooling problem, not a regression. The
+          # earlier try/except path for missing/corrupt coverage.json
+          # already exits 0 for the same reason.
+          #
+          # Summary + PR comment have already been written above, so
+          # reviewers see the table *before* this hard-fail trips.
+          threshold = float(os.environ.get("MIN_OVERALL_COVERAGE", "37.0"))
+          if total_executable == 0:
+              print(
+                  "::warning::No executable lines reported by xccov — "
+                  "skipping coverage gate"
+              )
+              sys.exit(0)
+          if overall < threshold:
+              print(
+                  f"::error::Overall coverage {overall:.2f}% is below "
+                  f"the minimum threshold ({threshold:.2f}%)."
+              )
+              print(
+                  "::error::Either add tests or, if intentional, lower "
+                  "MIN_OVERALL_COVERAGE in .github/workflows/ci.yml."
+              )
+              sys.exit(1)
+          print(
+              f"Coverage gate: {overall:.2f}% >= {threshold:.2f}% — OK"
+          )
           PY
 
       - name: Post coverage PR comment
@@ -202,7 +244,7 @@ jobs:
         if: >-
           always() &&
           github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.fork == false &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
           github.actor != 'dependabot[bot]'
         env:
           GH_TOKEN: ${{ github.token }}
