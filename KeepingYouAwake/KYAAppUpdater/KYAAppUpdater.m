@@ -15,8 +15,9 @@
 #import <Sparkle/Sparkle.h>
 
 // Fork-controlled appcast URLs, published to gh-pages by appcast.yml after
-// each release (#54). Only the release feed is generated; there is no
-// pre-release feed yet, so a pre-release update check finds nothing.
+// each release (#54). Only the release feed is generated; the pre-release
+// feed URL isn't published yet, so a pre-release update check fails to
+// fetch a feed (and installs nothing).
 // Pointing back at upstream's `newmarcel.github.io/KeepingYouAwake/...`
 // feeds instead would pull upstream's binary into a fork bundle and
 // violate the upstream maintainer's "don't redistribute under same name
