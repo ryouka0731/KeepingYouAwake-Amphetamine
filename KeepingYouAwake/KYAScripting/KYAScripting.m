@@ -16,8 +16,8 @@
 
 /// Class-level URL dispatcher seam. The three AppleScript command
 /// classes call into a single helper that delegates to this block. In
-/// production this is nil — the helper falls back to the default
-/// Launch Services path. Tests inject a capturing block via
+/// production this is nil — the helper hands the URL to the in-process
+/// `KYAEventHandler.defaultHandler`. Tests inject a capturing block via
 /// `+[KYAScriptingProxy kya_setURLDispatcherForTesting:]` so the URL
 /// can be asserted on without actually opening anything.
 ///
@@ -184,8 +184,14 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
         break;
     }
 
-    self.cachedOpenEntry = found;
-    self.cacheStampedAt = now;
+    // Don't populate the cache inside the bypass window: a read there may
+    // still see the pre-command state, and stamping it would let that
+    // state be served for a full TTL after the window ends.
+    if(now >= self.cacheBypassUntil)
+    {
+        self.cachedOpenEntry = found;
+        self.cacheStampedAt = now;
+    }
     return found;
 }
 
