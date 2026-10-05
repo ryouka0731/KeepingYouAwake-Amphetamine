@@ -146,11 +146,14 @@ NSTimeInterval const KYASleepWakeTimeIntervalIndefinite = 0;
     self.fireDate = nil;
     [self didChangeValueForKey:@"scheduled"];
 
-    if(self.completionBlock)
+    // Capture the block now: by the time the main queue runs this, a new
+    // session may have been scheduled with its own completion, which must
+    // not be invoked for this (older) session's end.
+    KYASleepWakeTimerCompletionBlock completion = self.completionBlock;
+    if(completion)
     {
-        AutoWeak weakSelf = self;
         dispatch_async(dispatch_get_main_queue(), ^{
-            weakSelf.completionBlock(forcedTermination);
+            completion(forcedTermination);
         });
     }
     
