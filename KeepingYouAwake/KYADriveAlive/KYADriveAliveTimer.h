@@ -22,8 +22,10 @@ FOUNDATION_EXPORT NSString * const KYADriveAlivePingFileName;
 ///
 /// Volumes are re-enumerated on every tick, so drives attached during a
 /// session are picked up. A volume that can't be written (e.g. a sandboxed
-/// build without access to it) is skipped. `start` is a no-op if already
-/// running. `stop` removes every ping file it wrote. Instances are
+/// build without access to it) is skipped, and so is a path that already
+/// holds anything other than a Drive Alive ping (a user's file, a
+/// directory or a symlink). `start` is a no-op if already running. `stop`
+/// removes the ping files this timer wrote, and only those. Instances are
 /// intentionally cheap: schedule once per active session, release on
 /// session end.
 @interface KYADriveAliveTimer : NSObject
@@ -37,6 +39,12 @@ FOUNDATION_EXPORT NSString * const KYADriveAlivePingFileName;
 /// Mounted volumes that are external (not internal), local (not network
 /// shares), writable and not the root file system.
 + (NSArray<NSURL *> *)externalWritableVolumeURLs;
+
+/// The filter behind +externalWritableVolumeURLs, for the resource values
+/// of one volume (`NSURLVolumeIsInternalKey`, `…IsLocalKey`,
+/// `…IsReadOnlyKey`, `…IsRootFileSystemKey`). Unknown "internal" counts
+/// as internal.
++ (BOOL)isEligibleVolumeWithResourceValues:(NSDictionary<NSURLResourceKey, id> *)values;
 
 - (instancetype)init NS_UNAVAILABLE;
 - (instancetype)initWithInterval:(NSTimeInterval)interval;
