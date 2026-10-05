@@ -74,6 +74,18 @@ def _activity_log_path() -> Path:
         return ACTIVITY_LOG_PATH
     return max(existing, key=lambda p: p.stat().st_mtime)
 
+
+def _kya_is_running() -> bool:
+    """Whether a KeepingYouAwake process exists. An open log entry while it
+    isn't running was left by a crash or kill (KYA repairs it on next launch)."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-x", "KeepingYouAwake"], capture_output=True, check=False, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True  # can't tell — don't hide a real session
+    return result.returncode == 0
+
 ALLOWED_DEFAULT_KEYS = {
     "info.marcel-dierkes.KeepingYouAwake.ActivateOnACPowerEnabled",
     "info.marcel-dierkes.KeepingYouAwake.ActivateOnExternalDisplayConnectedEnabled",
@@ -141,7 +153,10 @@ def _current_status() -> dict[str, Any]:
     `remainingSeconds` rather than crashing the MCP call.
     """
     # Only one session is open at a time, so the newest entry decides. An
-    # older entry without endedAt was left behind by a quit or crash.
+    # older entry without endedAt was left behind by a quit or crash, and
+    # so is the newest one while KYA isn't running.
+    if not _kya_is_running():
+        return {"active": False}
     entries = _read_recent_entries(1)
     for entry in entries:
         if "endedAt" not in entry or entry.get("endedAt") is None:
