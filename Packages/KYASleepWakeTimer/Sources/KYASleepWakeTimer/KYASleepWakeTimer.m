@@ -149,7 +149,10 @@ NSTimeInterval const KYASleepWakeTimeIntervalIndefinite = 0;
     // Capture the block now: by the time the main queue runs this, a new
     // session may have been scheduled with its own completion, which must
     // not be invoked for this (older) session's end.
+    // Clear it so a later -invalidate (e.g. on app quit after a natural
+    // expiry) can't run the finished session's completion a second time.
     KYASleepWakeTimerCompletionBlock completion = self.completionBlock;
+    self.completionBlock = nil;
     if(completion)
     {
         dispatch_async(dispatch_get_main_queue(), ^{
