@@ -73,24 +73,26 @@ def parse_short_version(tag):
     return tag[len(TAG_PREFIX):] if tag.startswith(TAG_PREFIX) else tag
 
 
+def build_number(major, minor, patch, suffix):
+    """CFBundleVersion for vMAJOR.MINOR.PATCH-amphetamine.SUFFIX.
+
+    major * 1_000_000 + minor * 10_000 + patch * 100 + suffix, e.g.
+    v1.7.0-amphetamine.5 → 1070005. Must match CURRENT_PROJECT_VERSION in
+    Configuration.xcconfig. Arithmetic (not digit concatenation) keeps the
+    order right past amphetamine.9: concatenating gave 10700010 for .10,
+    which outranks v1.7.1-amphetamine.1. Identical to the old scheme for
+    every release so far (patch 0, suffix < 10). Valid while minor, patch
+    and suffix stay below 100.
+    """
+    return str(major * 1_000_000 + minor * 10_000 + patch * 100 + suffix)
+
+
 def parse_build_number(tag, body):
-    # Tag format: v1.7.0-amphetamine.3 → bundle build = 1070003 by convention.
-    # The build number is encoded as 1MMmmpppNNN where N = amphetamine.N.
-    # We approximate: strip any non-digit then take last 7 digits, fallback to '1000000'.
     short = parse_short_version(tag)
-    # Try to extract three-part marketing version + suffix counter.
     import re
     m = re.match(r"(\d+)\.(\d+)\.(\d+)-amphetamine\.(\d+)", short)
     if m:
-        major, minor, patch, suffix = (int(g) for g in m.groups())
-        # Must match the CURRENT_PROJECT_VERSION convention used by the
-        # actual build: 1MMmmppp + suffix, e.g. v1.7.0-amphetamine.4
-        # → 1070004 (7 digits). Earlier this used patch:04d which
-        # produced 10700004 (8 digits), and Sparkle saw the appcast
-        # version as numerically greater than the running app's
-        # CFBundleVersion forever, looping the "update available"
-        # prompt.
-        return f"{major:01d}{minor:02d}{patch:03d}{suffix}"
+        return build_number(*(int(g) for g in m.groups()))
     return "1000000"
 
 
