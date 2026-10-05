@@ -543,10 +543,14 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     if(notification.object != self.ssidTableView) { return; }
     // Also posted when Escape cancels editing, which commits nothing. Run
     // after the table has applied a committed value, so only a row that
-    // is still empty is dropped.
+    // is still empty is dropped — unless a new row is being edited by
+    // then (e.g. "+" clicked right away): its placeholder must stay, and
+    // its own end of editing cleans up.
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
-        [weakSelf removeEmptySSIDPlaceholders];
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if(strongSelf == nil || strongSelf.ssidTableView.editedRow >= 0) { return; }
+        [strongSelf removeEmptySSIDPlaceholders];
     });
 }
 
