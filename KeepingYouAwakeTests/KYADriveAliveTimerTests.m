@@ -152,6 +152,23 @@
     [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeA] exists:NO];
 }
 
+- (void)testNonUTF8UserFileIsNotTruncated
+{
+    NSURL *ping = [self pingURLInVolume:self.volumeA];
+    const unsigned char bytes[] = { 0xFF, 0xFE, 0x00, 0x80 };
+    NSData *binary = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+    XCTAssertTrue([binary writeToURL:ping atomically:NO]);
+    NSArray<NSURL *> *volumes = @[self.volumeA, self.volumeB];
+    KYADriveAliveTimer *timer = [[KYADriveAliveTimer alloc] initWithInterval:60.0
+                                                             volumesProvider:^NSArray<NSURL *> *{ return volumes; }];
+    [timer start];
+    [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeB] exists:YES];
+    [timer stop];
+    [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeB] exists:NO];
+
+    XCTAssertEqualObjects([NSData dataWithContentsOfURL:ping], binary);
+}
+
 - (void)testEmptyLeftoverFileIsReclaimed
 {
     // What an interrupted write of ours leaves behind must not block the
