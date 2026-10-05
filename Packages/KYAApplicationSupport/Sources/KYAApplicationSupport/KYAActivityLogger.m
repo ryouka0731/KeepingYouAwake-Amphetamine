@@ -118,6 +118,9 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
 /// so -recordActivationEnded knows which line to edit. -1 when no
 /// session is open.
 @property (nonatomic) NSInteger openEntryLineNumber;
+/// Set when -closeDanglingEntriesWithReason: couldn't write its repair; the
+/// next append retries it so dangling entries don't stay open on disk.
+@property (copy, nonatomic, nullable) NSString *pendingDanglingRepairReason;
 @end
 
 @implementation KYAActivityLogger
@@ -200,18 +203,9 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
     NSString *capturedReason = [reason copy] ?: KYAActivityLogEndedReasonAppTerminated;
     dispatch_sync(self.writeQueue, ^{
         NSMutableArray<NSDictionary *> *dicts = [[self readAllDictionariesFromFile] mutableCopy];
-        Auto formatter = [NSISO8601DateFormatter new];
-        BOOL changed = NO;
-        for(NSUInteger i = 0; i < dicts.count; i++)
-        {
-            if(dicts[i][@"endedAt"] != nil) { continue; }
-            NSMutableDictionary *dangling = [dicts[i] mutableCopy];
-            dangling[@"endedAt"] = [formatter stringFromDate:now];
-            if(capturedReason.length > 0) { dangling[@"endedReason"] = capturedReason; }
-            dicts[i] = [dangling copy];
-            changed = YES;
-        }
-        if(changed) { [self writeAllDictionaries:dicts]; }
+        BOOL changed = [self closeDanglingDictionaries:dicts endedAt:now reason:capturedReason];
+        // Retry on the next append if the repair couldn't be persisted.
+        self.pendingDanglingRepairReason = (changed && ![self writeAllDictionaries:dicts]) ? capturedReason : nil;
         self.openEntryLineNumber = -1;
     });
 }
@@ -277,9 +271,34 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
                         error:&error];
 }
 
+/// Sets `endedAt` / `endedReason` on every entry without `endedAt`.
+/// Returns YES if any entry was changed. Always called on writeQueue.
+- (BOOL)closeDanglingDictionaries:(NSMutableArray<NSDictionary *> *)dicts
+                          endedAt:(NSDate *)endedAt
+                           reason:(NSString *)reason
+{
+    Auto formatter = [NSISO8601DateFormatter new];
+    BOOL changed = NO;
+    for(NSUInteger i = 0; i < dicts.count; i++)
+    {
+        if(dicts[i][@"endedAt"] != nil) { continue; }
+        NSMutableDictionary *dangling = [dicts[i] mutableCopy];
+        dangling[@"endedAt"] = [formatter stringFromDate:endedAt];
+        if(reason.length > 0) { dangling[@"endedReason"] = reason; }
+        dicts[i] = [dangling copy];
+        changed = YES;
+    }
+    return changed;
+}
+
 - (void)appendEntry:(KYAActivityLogEntry *)entry
 {
     NSMutableArray<NSDictionary *> *dicts = [[self readAllDictionariesFromFile] mutableCopy];
+    Auto pendingRepairReason = self.pendingDanglingRepairReason;
+    if(pendingRepairReason != nil)
+    {
+        [self closeDanglingDictionaries:dicts endedAt:entry.startedAt reason:pendingRepairReason];
+    }
     [dicts addObject:[entry dictionaryRepresentation]];
 
     // Soft cap: drop oldest entries first.
@@ -291,6 +310,7 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
     if([self writeAllDictionaries:dicts])
     {
         self.openEntryLineNumber = (NSInteger)dicts.count - 1;
+        self.pendingDanglingRepairReason = nil;
     }
 }
 
