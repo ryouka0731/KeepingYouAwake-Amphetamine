@@ -16,7 +16,9 @@ NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
 static NSString * const KYADriveAliveContentPrefix = @"keepingyouawake ";
 
 /// First bytes of a regular file at `path` (symlinks are not followed).
-/// nil if it doesn't exist, isn't a regular file or can't be read.
+/// @"" only for a regular file confirmed to be empty; nil if it doesn't
+/// exist, isn't a regular file, can't be read or isn't UTF-8 — callers
+/// treat nil as "not ours, don't touch".
 static NSString * _Nullable KYADriveAliveReadHead(NSString *path)
 {
     int fd = open(path.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW);
@@ -27,11 +29,16 @@ static NSString * _Nullable KYADriveAliveReadHead(NSString *path)
         close(fd);
         return nil;
     }
+    if(info.st_size == 0)
+    {
+        close(fd);
+        return @"";
+    }
     char buffer[128];
     ssize_t count = read(fd, buffer, sizeof(buffer));
     close(fd);
-    if(count <= 0) { return @""; }
-    return [[NSString alloc] initWithBytes:buffer length:(NSUInteger)count encoding:NSUTF8StringEncoding] ?: @"";
+    if(count <= 0) { return nil; }
+    return [[NSString alloc] initWithBytes:buffer length:(NSUInteger)count encoding:NSUTF8StringEncoding];
 }
 
 /// One queue for every timer's ticks and cleanup, so checking a ping's
