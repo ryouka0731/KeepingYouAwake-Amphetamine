@@ -521,6 +521,16 @@
 /// session that happened to be running at the same time.
 - (void)terminateTimerIfOwnedBySource:(KYAActivationSource)source
 {
+    // The trigger ended while its session was suspended for fast user
+    // switching: don't resume it when the session becomes active again.
+    if(source != KYAActivationSourceUser
+       && self.workspaceScheduledTimeInterval >= 0
+       && self.workspaceScheduledSource == source)
+    {
+        self.workspaceScheduledTimeInterval = -1;
+        self.workspaceScheduledSource = KYAActivationSourceUser;
+    }
+
     if([self.sleepWakeTimer isScheduled] == NO) { return; }
     // -terminateIfOwnedBySource: atomically checks the invariant and
     // clears ownership when it matches. -terminateTimerWithReason:
