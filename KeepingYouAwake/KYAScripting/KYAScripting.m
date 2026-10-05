@@ -4,15 +4,20 @@
 //
 
 #import "KYAScripting.h"
+#import <KYAApplicationEvents/KYAApplicationEvents.h>
 #import <KYAApplicationSupport/KYAApplicationSupport.h>
 #import <KYACommon/KYACommon.h>
+
+@interface KYAScriptingProxy ()
+- (void)invalidateCache;
+@end
 
 #pragma mark - URL-scheme bridge
 
 /// Class-level URL dispatcher seam. The three AppleScript command
 /// classes call into a single helper that delegates to this block. In
-/// production this is nil — the helper falls back to the default
-/// Launch Services path. Tests inject a capturing block via
+/// production this is nil — the helper hands the URL to the in-process
+/// `KYAEventHandler.defaultHandler`. Tests inject a capturing block via
 /// `+[KYAScriptingProxy kya_setURLDispatcherForTesting:]` so the URL
 /// can be asserted on without actually opening anything.
 ///
@@ -45,33 +50,34 @@ static void KYAScriptingPostURL(NSString *url)
 {
     NSURL *target = [NSURL URLWithString:url];
     if(target == nil) { return; }
+    // The state is about to change; don't let a cached "active" entry
+    // outlive the command (e.g. `deactivate kya` then `active of kya`).
+    [KYAScriptingProxy.sharedProxy invalidateCache];
     KYAScriptingURLDispatcher dispatcher = KYAScriptingCurrentDispatcher();
     if(dispatcher != nil)
     {
         dispatcher(target);
         return;
     }
-    // -openURL: was deprecated in 10.15. Use the modern
-    // openURL:configuration:completionHandler: form. Even though both
-    // round-trip through Launch Services for a self-targeted URL, the
-    // modern variant is non-deprecated and asynchronous (we don't
-    // need the result), so it's strictly nicer than the old API.
-    [NSWorkspace.sharedWorkspace openURL:target
-                           configuration:[NSWorkspaceOpenConfiguration configuration]
-                       completionHandler:nil];
+    // Hand the URL straight to this process's event handler instead of
+    // round-tripping through Launch Services. `keepingyouawake://` is
+    // also registered by upstream KeepingYouAwake and by the sibling
+    // build target, so `-[NSWorkspace openURL:…]` could deliver the
+    // command to a different app while we still return @YES.
+    [KYAEventHandler.defaultHandler handleEventForURL:target];
 }
 
 #pragma mark - Commands
 
 // Notes on return-value semantics:
-// `openURL:configuration:completionHandler:` is asynchronous, so when
+// `-[KYAEventHandler handleEventForURL:]` is asynchronous, so when
 // these commands return, the actual activation state hasn't propagated
 // yet. Reading the live state in this same method (e.g. wasActive
 // before deactivate) is a TOCTOU race against any other automation
 // client. Instead we report the boolean "the command was dispatched"
 // — and the SDEF documents it that way. A caller who needs to know
 // the resulting state should read `kya.active` after a brief delay
-// (the proxy's 1-second TTL cache makes that cheap).
+// (each command invalidates the proxy's cache, so that read is fresh).
 
 @implementation KYAActivateScriptCommand
 - (id)performDefaultImplementation
@@ -116,6 +122,14 @@ static void KYAScriptingPostURL(NSString *url)
 @interface KYAScriptingProxy ()
 @property (nonatomic, nullable) KYAActivityLogEntry *cachedOpenEntry;
 @property (nonatomic) NSTimeInterval cacheStampedAt;
+/// Until this time the cache is bypassed. A command's action runs
+/// asynchronously, so a read that lands between dispatch and the
+/// action would otherwise re-cache the pre-command state for a full TTL.
+@property (nonatomic) NSTimeInterval cacheBypassUntil;
+/// Test overrides; nil means the shared logger / this process's launch date.
+@property (nonatomic, nullable) KYAActivityLogger *activityLoggerOverride;
+@property (nonatomic, nullable) NSDate *launchDateOverride;
+@property (nonatomic, nullable) NSDate *nowOverride;
 @end
 
 @implementation KYAScriptingProxy
@@ -135,15 +149,24 @@ static void KYAScriptingPostURL(NSString *url)
 /// state changes.
 static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
 
+/// Clock for the cache / bypass bookkeeping (overridable in tests).
+- (NSTimeInterval)currentTime
+{
+    return (self.nowOverride ?: [NSDate date]).timeIntervalSinceReferenceDate;
+}
+
 - (nullable KYAActivityLogEntry *)mostRecentOpenEntry
 {
-    NSTimeInterval now = [NSDate date].timeIntervalSinceReferenceDate;
-    if(self.cachedOpenEntry != nil && (now - self.cacheStampedAt) < KYAScriptingProxyCacheTTL)
+    NSTimeInterval now = [self currentTime];
+    if(self.cachedOpenEntry != nil
+       && now >= self.cacheBypassUntil
+       && (now - self.cacheStampedAt) < KYAScriptingProxyCacheTTL)
     {
         return self.cachedOpenEntry;
     }
 
-    Auto entries = [KYAActivityLogger.sharedLogger recentEntriesWithLimit:50];
+    KYAActivityLogger *logger = self.activityLoggerOverride ?: KYAActivityLogger.sharedLogger;
+    Auto entries = [logger recentEntriesWithLimit:50];
     // The activity log holds at most one open entry at a time (entry
     // is opened on activateTimer:, closed on terminateTimer / natural
     // expiration). So the open entry, if any, is necessarily the
@@ -153,13 +176,13 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
     // session, its open entry survives in the JSONL. After a restart
     // we'd happily call that "active" — false. Only trust an open
     // entry if it was started AFTER the current process launched.
-    NSDate *launchDate = NSRunningApplication.currentApplication.launchDate;
+    NSDate *launchDate = self.launchDateOverride ?: NSRunningApplication.currentApplication.launchDate;
 
     KYAActivityLogEntry *found = nil;
     for(KYAActivityLogEntry *entry in entries)
     {
         if(entry.endedAt != nil) { continue; }
-        if(launchDate != nil && [entry.startedAt compare:launchDate] == NSOrderedAscending)
+        if(![KYAScriptingProxy kya_isEntryStartedAt:entry.startedAt fromLaunchAt:launchDate])
         {
             // Stale from a prior process. Skip.
             continue;
@@ -168,9 +191,21 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
         break;
     }
 
-    self.cachedOpenEntry = found;
-    self.cacheStampedAt = now;
+    // Don't populate the cache inside the bypass window: a read there may
+    // still see the pre-command state, and stamping it would let that
+    // state be served for a full TTL after the window ends.
+    if(now >= self.cacheBypassUntil)
+    {
+        self.cachedOpenEntry = found;
+        self.cacheStampedAt = now;
+    }
     return found;
+}
+
+- (void)invalidateCache
+{
+    self.cachedOpenEntry = nil;
+    self.cacheBypassUntil = [self currentTime] + KYAScriptingProxyCacheTTL;
 }
 
 - (BOOL)isActive
@@ -204,6 +239,47 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
 #pragma mark - Testing seam
 
 @implementation KYAScriptingProxy (Testing)
+
++ (BOOL)kya_isEntryStartedAt:(NSDate *)startedAt fromLaunchAt:(nullable NSDate *)launchDate
+{
+    if(launchDate == nil) { return YES; }
+    // The activity log persists `startedAt` via NSISO8601DateFormatter,
+    // which drops fractional seconds, while `launchDate` keeps them. A
+    // session started within the launch second (activate-on-launch,
+    // AC-power trigger, …) would read back as earlier than launch and
+    // be treated as stale. Compare at whole-second precision instead.
+    NSTimeInterval launchSecond = floor(launchDate.timeIntervalSinceReferenceDate);
+    return startedAt.timeIntervalSinceReferenceDate >= launchSecond;
+}
+
+- (void)kya_setActivityLoggerForTesting:(nullable KYAActivityLogger *)logger
+{
+    self.activityLoggerOverride = logger;
+    // A cached entry from the previous logger must not leak into reads.
+    self.cachedOpenEntry = nil;
+}
+
+- (void)kya_setLaunchDateForTesting:(nullable NSDate *)launchDate
+{
+    self.launchDateOverride = launchDate;
+    // The cached entry was filtered against the previous launch date.
+    self.cachedOpenEntry = nil;
+}
+
+- (void)kya_setNowForTesting:(nullable NSDate *)now
+{
+    self.nowOverride = now;
+}
+
+- (void)kya_resetForTesting
+{
+    self.activityLoggerOverride = nil;
+    self.launchDateOverride = nil;
+    self.nowOverride = nil;
+    self.cachedOpenEntry = nil;
+    self.cacheStampedAt = 0;
+    self.cacheBypassUntil = 0;
+}
 
 + (void)kya_setURLDispatcherForTesting:(KYAScriptingURLDispatcher _Nullable)dispatcher
 {

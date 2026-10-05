@@ -10,6 +10,8 @@
 
 #import <Cocoa/Cocoa.h>
 
+@class KYAActivityLogger;
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface KYAActivateScriptCommand : NSScriptCommand
@@ -39,9 +41,34 @@ typedef void (^KYAScriptingURLDispatcher)(NSURL *url);
 @interface KYAScriptingProxy (Testing)
 /// Override the URL dispatch used by the AppleScript command classes.
 /// Pass `nil` to restore the default (which routes through
-/// `-[NSWorkspace openURL:configuration:completionHandler:]`). Tests
+/// `-[KYAEventHandler handleEventForURL:]` in this process). Tests
 /// MUST reset this in `tearDown` to avoid leaking state across tests.
 + (void)kya_setURLDispatcherForTesting:(KYAScriptingURLDispatcher _Nullable)dispatcher;
+
+/// Stale-entry guard used by the `kya` property accessors: YES if an
+/// open activity-log entry started during the current process launch.
+/// `startedAt` has whole-second precision (ISO 8601 in the JSONL), so
+/// the comparison is done at that precision. A nil `launchDate` trusts
+/// every entry.
++ (BOOL)kya_isEntryStartedAt:(NSDate *)startedAt fromLaunchAt:(nullable NSDate *)launchDate;
+
+/// Read state from `logger` instead of the shared activity logger.
+/// Pass nil to restore the default. Clears the open-entry cache.
+- (void)kya_setActivityLoggerForTesting:(nullable KYAActivityLogger *)logger;
+
+/// Use `launchDate` for the stale-entry guard instead of this process's
+/// launch date. Pass nil to restore the default. Clears the open-entry
+/// cache.
+- (void)kya_setLaunchDateForTesting:(nullable NSDate *)launchDate;
+
+/// Pin the clock used for the cache TTL and post-command bypass window,
+/// so timing tests don't depend on wall-clock sleeps. Pass nil to
+/// restore the real clock.
+- (void)kya_setNowForTesting:(nullable NSDate *)now;
+
+/// Clear test overrides and the open-entry cache. Tests MUST call this
+/// in `tearDown` since the proxy is a singleton.
+- (void)kya_resetForTesting;
 @end
 
 NS_ASSUME_NONNULL_END
