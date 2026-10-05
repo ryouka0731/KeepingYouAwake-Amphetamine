@@ -6,6 +6,15 @@
         <description>A community fork of KeepingYouAwake with Amphetamine-style features.</description>
         <language>en</language>
         <item>
+            <title>1.7.0-amphetamine.5</title>
+            <pubDate>Mon, 05 Oct 2026 21:25:26 +0000</pubDate>
+            <sparkle:version>1070005</sparkle:version>
+            <sparkle:shortVersionString>1.7.0-amphetamine.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>10.13</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink>https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/releases/tag/v1.7.0-amphetamine.5</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/releases/download/v1.7.0-amphetamine.5/KeepingYouAwake-v1.7.0-amphetamine.5.dmg" length="1623097" type="application/octet-stream" sparkle:edSignature="MeM2Y3wNsMsI6FEjzGgiJxmQLWhD103x0PuF1hf48sK9LzYp59bHAvsnuee9Ttc6uYktsBFMA1NCdcBUmAqsBg=="/>
+        </item>
+        <item>
             <title>1.7.0-amphetamine.4</title>
             <pubDate>Sat, 09 May 2026 02:59:16 +0000</pubDate>
             <sparkle:version>1070004</sparkle:version>
