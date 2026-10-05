@@ -81,9 +81,15 @@ def build_number(major, minor, patch, suffix):
     Configuration.xcconfig. Arithmetic (not digit concatenation) keeps the
     order right past amphetamine.9: concatenating gave 10700010 for .10,
     which outranks v1.7.1-amphetamine.1. Identical to the old scheme for
-    every release so far (patch 0, suffix < 10). Valid while minor, patch
-    and suffix stay below 100.
+    every release so far (patch 0, suffix < 10).
+
+    Raises ValueError when minor, patch or suffix is outside 0..99, where
+    the encoding would collide (v1.100.0 == v2.0.0); publishing a feed with
+    a wrong order is worse than failing the workflow.
     """
+    for name, value in (("minor", minor), ("patch", patch), ("suffix", suffix)):
+        if not 0 <= value <= 99:
+            raise ValueError(f"{name}={value} out of range 0..99 for the build-number encoding")
     return str(major * 1_000_000 + minor * 10_000 + patch * 100 + suffix)
 
 
