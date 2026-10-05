@@ -42,7 +42,12 @@ NSTimeInterval const KYASleepWakeTimeIntervalIndefinite = 0;
 
 - (void)dealloc
 {
-    [self invalidate];
+    // Only stop caffeinate. -invalidate dispatches the completion and
+    // delegate callbacks in blocks that capture self, which would run
+    // after this object is freed (a use-after-free once the main queue
+    // drains).
+    _caffeinateTask.terminationHandler = nil;
+    [_caffeinateTask terminate];
 }
 
 #pragma mark - Scheduling
