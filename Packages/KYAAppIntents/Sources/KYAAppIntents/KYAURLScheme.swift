@@ -18,7 +18,7 @@ enum KYAURLScheme {
 
     enum DispatchError: Error {
         case invalidURL
-        case workspaceOpenFailed(URL)
+        case workspaceOpenFailed(URL, underlying: Error)
     }
 
     static func dispatch(_ action: Action, query: [URLQueryItem] = []) async throws {
@@ -46,7 +46,7 @@ enum KYAURLScheme {
                                                   withApplicationAt: Bundle.main.bundleURL,
                                                   configuration: configuration)
         } catch {
-            throw DispatchError.workspaceOpenFailed(url)
+            throw DispatchError.workspaceOpenFailed(url, underlying: error)
         }
     }
 }
