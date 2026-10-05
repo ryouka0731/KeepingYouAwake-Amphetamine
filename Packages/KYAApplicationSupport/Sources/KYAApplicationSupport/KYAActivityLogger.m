@@ -19,6 +19,7 @@ NSString * const KYAActivityLogSourceCPULoad         = @"cpu-load";
 NSString * const KYAActivityLogEndedReasonExpired          = @"expired";
 NSString * const KYAActivityLogEndedReasonUserCancelled    = @"user-cancelled";
 NSString * const KYAActivityLogEndedReasonTriggerCancelled = @"trigger-cancelled";
+NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
 
 #pragma mark - Entry
 
@@ -181,6 +182,37 @@ NSString * const KYAActivityLogEndedReasonTriggerCancelled = @"trigger-cancelled
     NSString *capturedReason = [reason copy] ?: KYAActivityLogEndedReasonUserCancelled;
     dispatch_async(self.writeQueue, ^{
         [self closeOpenEntryWithEndedAt:now reason:capturedReason];
+    });
+}
+
+- (void)recordActivationEndedSynchronouslyWithReason:(NSString *)reason
+{
+    NSDate *now = [NSDate date];
+    NSString *capturedReason = [reason copy] ?: KYAActivityLogEndedReasonUserCancelled;
+    dispatch_sync(self.writeQueue, ^{
+        [self closeOpenEntryWithEndedAt:now reason:capturedReason];
+    });
+}
+
+- (void)closeDanglingEntriesWithReason:(NSString *)reason
+{
+    NSDate *now = [NSDate date];
+    NSString *capturedReason = [reason copy] ?: KYAActivityLogEndedReasonAppTerminated;
+    dispatch_sync(self.writeQueue, ^{
+        NSMutableArray<NSDictionary *> *dicts = [[self readAllDictionariesFromFile] mutableCopy];
+        Auto formatter = [NSISO8601DateFormatter new];
+        BOOL changed = NO;
+        for(NSUInteger i = 0; i < dicts.count; i++)
+        {
+            if(dicts[i][@"endedAt"] != nil) { continue; }
+            NSMutableDictionary *dangling = [dicts[i] mutableCopy];
+            dangling[@"endedAt"] = [formatter stringFromDate:now];
+            if(capturedReason.length > 0) { dangling[@"endedReason"] = capturedReason; }
+            dicts[i] = [dangling copy];
+            changed = YES;
+        }
+        if(changed) { [self writeAllDictionaries:dicts]; }
+        self.openEntryLineNumber = -1;
     });
 }
 
