@@ -271,4 +271,29 @@
     XCTAssertEqualObjects(entries[1].endedReason, KYAActivityLogEndedReasonExpired);
 }
 
+- (void)testFailedEndWriteKeepsItsReasonOnNextAppend
+{
+    Auto fm = NSFileManager.defaultManager;
+    NSString *isolated = [NSString stringWithFormat:@"kya-end-%@", [NSUUID UUID].UUIDString];
+    NSURL *dir = [self.tmpFile.URLByDeletingLastPathComponent URLByAppendingPathComponent:isolated isDirectory:YES];
+    XCTAssertTrue([fm createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:nil]);
+    Auto logger = [[KYAActivityLogger alloc] initWithFileURL:[dir URLByAppendingPathComponent:@"activity.jsonl"]
+                                              maximumEntries:5];
+
+    [logger recordActivationStartedFromSource:KYAActivityLogSourceUser requestedDuration:-1];
+    [logger recentEntriesWithLimit:1];
+    // The user ends the session, but the write fails.
+    XCTAssertTrue([fm setAttributes:@{NSFilePosixPermissions: @0555} ofItemAtPath:dir.path error:nil]);
+    [logger recordActivationEndedWithReason:KYAActivityLogEndedReasonUserCancelled];
+    [logger recentEntriesWithLimit:1];
+    XCTAssertTrue([fm setAttributes:@{NSFilePosixPermissions: @0755} ofItemAtPath:dir.path error:nil]);
+
+    [logger recordActivationStartedFromSource:KYAActivityLogSourceACPower requestedDuration:-1];
+    Auto entries = [logger recentEntriesWithLimit:10];
+    XCTAssertEqual(entries.count, 2);
+    XCTAssertEqualObjects(entries[1].endedReason, KYAActivityLogEndedReasonUserCancelled,
+                          @"a failed user end must not be relabelled as expired");
+    [fm removeItemAtURL:dir error:nil];
+}
+
 @end
