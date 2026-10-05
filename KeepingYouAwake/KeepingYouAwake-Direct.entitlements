@@ -9,5 +9,9 @@
 	</array>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+	<key>com.apple.security.files.downloads.read-only</key>
+	<true/>
 </dict>
 </plist>
