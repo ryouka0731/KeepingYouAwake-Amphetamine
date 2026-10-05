@@ -285,7 +285,8 @@
     // The user ends the session, but the write fails.
     XCTAssertTrue([fm setAttributes:@{NSFilePosixPermissions: @0555} ofItemAtPath:dir.path error:nil]);
     [logger recordActivationEndedWithReason:KYAActivityLogEndedReasonUserCancelled];
-    [logger recentEntriesWithLimit:1];
+    XCTAssertNil([logger recentEntriesWithLimit:1].firstObject.endedAt,
+                 @"precondition: the end write must have failed");
     XCTAssertTrue([fm setAttributes:@{NSFilePosixPermissions: @0755} ofItemAtPath:dir.path error:nil]);
 
     [logger recordActivationStartedFromSource:KYAActivityLogSourceACPower requestedDuration:-1];
