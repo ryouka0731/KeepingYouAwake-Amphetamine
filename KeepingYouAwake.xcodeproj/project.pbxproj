@@ -11,6 +11,7 @@
 		31D46D55AE9D3118655EBEA4 /* KYAActivationSource.m in Sources */ = {isa = PBXBuildFile; fileRef = A80F72AA7A4977CA75B43CED /* KYAActivationSource.m */; };
 		4F3D54974DB667B49406F769 /* KYAScriptingCommandTests.m in Sources */ = {isa = PBXBuildFile; fileRef = DD66861EE3EC0CF59911D595 /* KYAScriptingCommandTests.m */; };
 		551AA6B9EA14E675C876F7B8 /* KYAApplicationSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 40FC432D76099562A43D4D05 /* KYAApplicationSupport */; };
+		79DC84E8CFD37CF784EEBA2F /* KYAApplicationEvents in Frameworks */ = {isa = PBXBuildFile; productRef = 937C2617A3FAFB8E1C78FFEE /* KYAApplicationEvents */; };
 		63D0E83755D768F7C92ABEC6 /* KYAWatchedItemsSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 36CE5CEAE7027816B8A95C94 /* KYAWatchedItemsSettingsViewController.m */; };
 		69D856C8EE5E1E8DAA20D1E0 /* KYAActivationOwnership.m in Sources */ = {isa = PBXBuildFile; fileRef = EDB291B2041183CA6D4851A0 /* KYAActivationOwnership.m */; };
 		6B70A995C914FE326908733C /* KeepingYouAwake.sdef in Resources */ = {isa = PBXBuildFile; fileRef = 411A25D692ACBE44E57B72C7 /* KeepingYouAwake.sdef */; };
@@ -301,6 +302,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				551AA6B9EA14E675C876F7B8 /* KYAApplicationSupport in Frameworks */,
+				79DC84E8CFD37CF784EEBA2F /* KYAApplicationEvents in Frameworks */,
 				FE54924E454CC9FB1E9021BA /* KYACommon in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -652,6 +654,7 @@
 			name = KeepingYouAwakeTests;
 			packageProductDependencies = (
 				40FC432D76099562A43D4D05 /* KYAApplicationSupport */,
+				937C2617A3FAFB8E1C78FFEE /* KYAApplicationEvents */,
 				5889721C01667579F0B9E833 /* KYACommon */,
 			);
 			productName = KeepingYouAwakeTests;
@@ -1480,6 +1483,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		937C2617A3FAFB8E1C78FFEE /* KYAApplicationEvents */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KYAApplicationEvents;
+		};
 		40FC432D76099562A43D4D05 /* KYAApplicationSupport */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = KYAApplicationSupport;
