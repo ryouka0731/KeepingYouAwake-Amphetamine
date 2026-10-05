@@ -40,7 +40,7 @@ public struct KYAActivateIntent: AppIntent {
             // `KYASleepWakeTimeIntervalIndefinite` in the URL handler.
             query.append(URLQueryItem(name: "seconds", value: "0"))
         }
-        try KYAURLScheme.dispatch(.activate, query: query)
+        try await KYAURLScheme.dispatch(.activate, query: query)
         return .result()
     }
 }
