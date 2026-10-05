@@ -34,6 +34,19 @@ static NSString * _Nullable KYADriveAliveReadHead(NSString *path)
     return [[NSString alloc] initWithBytes:buffer length:(NSUInteger)count encoding:NSUTF8StringEncoding] ?: @"";
 }
 
+/// One queue for every timer's ticks and cleanup, so checking a ping's
+/// owner and removing it can't interleave with another timer's write to
+/// the same path.
+static dispatch_queue_t KYADriveAliveQueue(void)
+{
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        queue = dispatch_queue_create("info.marcel-dierkes.KeepingYouAwake.drive-alive", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
 /// Writes `data` in place (real I/O on that drive) unless the path holds
 /// something that isn't a Drive Alive ping: a user's file, a directory or
 /// a symlink is left untouched.
@@ -43,8 +56,11 @@ static BOOL KYADriveAliveWritePing(NSString *path, NSData *data, NSError **outEr
     int fd = open(fsPath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
     if(fd < 0 && errno == EEXIST)
     {
-        // Ours from an earlier session (or a crashed one) is fine to reuse.
-        if(![KYADriveAliveReadHead(path) hasPrefix:KYADriveAliveContentPrefix])
+        // Ours from an earlier session (or a crashed one) is fine to reuse,
+        // and so is an empty file: what an interrupted or failed write of
+        // ours leaves behind.
+        NSString *head = KYADriveAliveReadHead(path);
+        if(head == nil || (head.length > 0 && ![head hasPrefix:KYADriveAliveContentPrefix]))
         {
             if(outError) { *outError = [NSError errorWithDomain:NSPOSIXErrorDomain code:EEXIST userInfo:nil]; }
             return NO;
@@ -58,6 +74,12 @@ static BOOL KYADriveAliveWritePing(NSString *path, NSData *data, NSError **outEr
     }
     ssize_t written = write(fd, data.bytes, data.length);
     int writeErrno = errno;
+    if(written != (ssize_t)data.length)
+    {
+        // Leave an empty file, which the next tick reclaims, rather than a
+        // partial one that no longer carries the marker.
+        (void)ftruncate(fd, 0);
+    }
     close(fd);
     if(written != (ssize_t)data.length)
     {
@@ -170,9 +192,7 @@ static void KYADriveAliveRemovePing(NSString *path, NSString *token)
 {
     if(self.running) { return; }
 
-    Auto queue = dispatch_queue_create("info.marcel-dierkes.KeepingYouAwake.drive-alive",
-                                        DISPATCH_QUEUE_SERIAL);
-    Auto source = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+    Auto source = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, KYADriveAliveQueue());
     uint64_t intervalNs = (uint64_t)(self.interval * NSEC_PER_SEC);
     // Fire immediately so a drive that's already near its spin-down
     // threshold gets touched before it stops; subsequent fires use
