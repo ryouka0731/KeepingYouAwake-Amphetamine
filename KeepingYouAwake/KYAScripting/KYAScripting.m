@@ -129,6 +129,7 @@ static void KYAScriptingPostURL(NSString *url)
 /// Test overrides; nil means the shared logger / this process's launch date.
 @property (nonatomic, nullable) KYAActivityLogger *activityLoggerOverride;
 @property (nonatomic, nullable) NSDate *launchDateOverride;
+@property (nonatomic, nullable) NSDate *nowOverride;
 @end
 
 @implementation KYAScriptingProxy
@@ -148,9 +149,15 @@ static void KYAScriptingPostURL(NSString *url)
 /// state changes.
 static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
 
+/// Clock for the cache / bypass bookkeeping (overridable in tests).
+- (NSTimeInterval)currentTime
+{
+    return (self.nowOverride ?: [NSDate date]).timeIntervalSinceReferenceDate;
+}
+
 - (nullable KYAActivityLogEntry *)mostRecentOpenEntry
 {
-    NSTimeInterval now = [NSDate date].timeIntervalSinceReferenceDate;
+    NSTimeInterval now = [self currentTime];
     if(self.cachedOpenEntry != nil
        && now >= self.cacheBypassUntil
        && (now - self.cacheStampedAt) < KYAScriptingProxyCacheTTL)
@@ -198,7 +205,7 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
 - (void)invalidateCache
 {
     self.cachedOpenEntry = nil;
-    self.cacheBypassUntil = [NSDate date].timeIntervalSinceReferenceDate + KYAScriptingProxyCacheTTL;
+    self.cacheBypassUntil = [self currentTime] + KYAScriptingProxyCacheTTL;
 }
 
 - (BOOL)isActive
@@ -248,17 +255,27 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
 - (void)kya_setActivityLoggerForTesting:(nullable KYAActivityLogger *)logger
 {
     self.activityLoggerOverride = logger;
+    // A cached entry from the previous logger must not leak into reads.
+    self.cachedOpenEntry = nil;
 }
 
 - (void)kya_setLaunchDateForTesting:(nullable NSDate *)launchDate
 {
     self.launchDateOverride = launchDate;
+    // The cached entry was filtered against the previous launch date.
+    self.cachedOpenEntry = nil;
+}
+
+- (void)kya_setNowForTesting:(nullable NSDate *)now
+{
+    self.nowOverride = now;
 }
 
 - (void)kya_resetForTesting
 {
     self.activityLoggerOverride = nil;
     self.launchDateOverride = nil;
+    self.nowOverride = nil;
     self.cachedOpenEntry = nil;
     self.cacheStampedAt = 0;
     self.cacheBypassUntil = 0;
