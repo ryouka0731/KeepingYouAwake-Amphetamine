@@ -363,18 +363,32 @@ static NSString * const KYATestStartedAtString = @"2026-01-01T00:00:00Z";
 
 - (void)testReadNearEndOfBypassWindowIsNotCachedPastIt
 {
+    // Pinned clock: deterministic regardless of CI scheduling jitter.
+    NSDate *t0 = [NSDate dateWithTimeIntervalSinceReferenceDate:10000];
+    [self.proxy kya_setNowForTesting:t0];
     [self captureDispatchedURLs];
     [self writeOpenEntry];
     [[KYATestableDeactivateCommand new] performDefaultImplementation];
 
     // A read late in the 1 s bypass window still sees the open entry…
-    [NSThread sleepForTimeInterval:0.8];
+    [self.proxy kya_setNowForTesting:[t0 dateByAddingTimeInterval:0.9]];
     XCTAssertTrue(self.proxy.isActive);
 
     // …the action lands, and once the window has ended that late read
     // must not be served from cache for another TTL.
     [self writeClosedEntry];
-    [NSThread sleepForTimeInterval:0.4];
+    [self.proxy kya_setNowForTesting:[t0 dateByAddingTimeInterval:1.1]];
+    XCTAssertFalse(self.proxy.isActive);
+}
+
+- (void)testSettingOverridesDropsCachedEntry
+{
+    [self writeOpenEntry];
+    XCTAssertTrue(self.proxy.isActive, @"primes the cache");
+
+    // Switching to a launch date after the entry makes it stale; the
+    // cached entry must not survive the override.
+    [self.proxy kya_setLaunchDateForTesting:[self.startedAt dateByAddingTimeInterval:5]];
     XCTAssertFalse(self.proxy.isActive);
 }
 
@@ -382,6 +396,7 @@ static NSString * const KYATestStartedAtString = @"2026-01-01T00:00:00Z";
 {
     // Sanity check that the TTL cache still does its job: with no
     // command in between, a read inside the TTL is served from cache.
+    [self.proxy kya_setNowForTesting:[NSDate dateWithTimeIntervalSinceReferenceDate:10000]];
     [self writeOpenEntry];
     XCTAssertTrue(self.proxy.isActive);
     [self writeClosedEntry];
