@@ -256,4 +256,19 @@
     [fm removeItemAtURL:roDir error:nil];
 }
 
+- (void)testStartingWhileAnEntryIsOpenClosesItAsExpired
+{
+    // Natural expiry raced with a new activation: the expiry's log write
+    // hasn't happened when the next session starts.
+    [self.logger recordActivationStartedFromSource:KYAActivityLogSourceUser requestedDuration:60];
+    [self.logger recordActivationStartedFromSource:KYAActivityLogSourceACPower requestedDuration:-1];
+    [self flush];
+
+    Auto entries = [self.logger recentEntriesWithLimit:10];
+    XCTAssertEqual(entries.count, 2);
+    XCTAssertNil(entries[0].endedAt, @"the new session is open");
+    XCTAssertNotNil(entries[1].endedAt);
+    XCTAssertEqualObjects(entries[1].endedReason, KYAActivityLogEndedReasonExpired);
+}
+
 @end
