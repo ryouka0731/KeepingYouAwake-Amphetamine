@@ -39,9 +39,16 @@ typedef void (^KYAScriptingURLDispatcher)(NSURL *url);
 @interface KYAScriptingProxy (Testing)
 /// Override the URL dispatch used by the AppleScript command classes.
 /// Pass `nil` to restore the default (which routes through
-/// `-[NSWorkspace openURL:configuration:completionHandler:]`). Tests
+/// `-[KYAEventHandler handleEventForURL:]` in this process). Tests
 /// MUST reset this in `tearDown` to avoid leaking state across tests.
 + (void)kya_setURLDispatcherForTesting:(KYAScriptingURLDispatcher _Nullable)dispatcher;
+
+/// Stale-entry guard used by the `kya` property accessors: YES if an
+/// open activity-log entry started during the current process launch.
+/// `startedAt` has whole-second precision (ISO 8601 in the JSONL), so
+/// the comparison is done at that precision. A nil `launchDate` trusts
+/// every entry.
++ (BOOL)kya_isEntryStartedAt:(NSDate *)startedAt fromLaunchAt:(nullable NSDate *)launchDate;
 @end
 
 NS_ASSUME_NONNULL_END
