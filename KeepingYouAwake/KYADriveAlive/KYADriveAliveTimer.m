@@ -5,8 +5,78 @@
 
 #import "KYADriveAliveTimer.h"
 #import <KYACommon/KYACommon.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
+
+/// Every ping file starts with this, followed by the writing timer's token.
+/// A file without it is someone else's and is never written or removed.
+static NSString * const KYADriveAliveContentPrefix = @"keepingyouawake ";
+
+/// First bytes of a regular file at `path` (symlinks are not followed).
+/// nil if it doesn't exist, isn't a regular file or can't be read.
+static NSString * _Nullable KYADriveAliveReadHead(NSString *path)
+{
+    int fd = open(path.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW);
+    if(fd < 0) { return nil; }
+    struct stat info;
+    if(fstat(fd, &info) != 0 || !S_ISREG(info.st_mode))
+    {
+        close(fd);
+        return nil;
+    }
+    char buffer[128];
+    ssize_t count = read(fd, buffer, sizeof(buffer));
+    close(fd);
+    if(count <= 0) { return @""; }
+    return [[NSString alloc] initWithBytes:buffer length:(NSUInteger)count encoding:NSUTF8StringEncoding] ?: @"";
+}
+
+/// Writes `data` in place (real I/O on that drive) unless the path holds
+/// something that isn't a Drive Alive ping: a user's file, a directory or
+/// a symlink is left untouched.
+static BOOL KYADriveAliveWritePing(NSString *path, NSData *data, NSError **outError)
+{
+    const char *fsPath = path.fileSystemRepresentation;
+    int fd = open(fsPath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
+    if(fd < 0 && errno == EEXIST)
+    {
+        // Ours from an earlier session (or a crashed one) is fine to reuse.
+        if(![KYADriveAliveReadHead(path) hasPrefix:KYADriveAliveContentPrefix])
+        {
+            if(outError) { *outError = [NSError errorWithDomain:NSPOSIXErrorDomain code:EEXIST userInfo:nil]; }
+            return NO;
+        }
+        fd = open(fsPath, O_WRONLY | O_TRUNC | O_NOFOLLOW);
+    }
+    if(fd < 0)
+    {
+        if(outError) { *outError = [NSError errorWithDomain:NSPOSIXErrorDomain code:errno userInfo:nil]; }
+        return NO;
+    }
+    ssize_t written = write(fd, data.bytes, data.length);
+    int writeErrno = errno;
+    close(fd);
+    if(written != (ssize_t)data.length)
+    {
+        if(outError) { *outError = [NSError errorWithDomain:NSPOSIXErrorDomain code:writeErrno userInfo:nil]; }
+        return NO;
+    }
+    return YES;
+}
+
+/// Removes `path` only if it is a ping written by the timer with `token`,
+/// so a replacement timer's file (or anyone else's) survives.
+static void KYADriveAliveRemovePing(NSString *path, NSString *token)
+{
+    NSString *ownPrefix = [KYADriveAliveContentPrefix stringByAppendingFormat:@"%@ ", token];
+    if([KYADriveAliveReadHead(path) hasPrefix:ownPrefix])
+    {
+        unlink(path.fileSystemRepresentation);
+    }
+}
 
 @interface KYADriveAliveTimer ()
 @property (nonatomic, readwrite, getter=isRunning) BOOL running;
@@ -14,6 +84,8 @@ NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
 @property (nonatomic, copy, readonly) NSURL *pingFileURL;
 @property (nonatomic) os_log_t log;
 @property (nonatomic, copy) KYADriveAliveVolumesProvider volumesProvider;
+/// Identifies this timer's ping files (see KYADriveAliveRemovePing).
+@property (nonatomic, copy) NSString *token;
 /// External ping files written this run (removed on stop). Only touched on
 /// the timer queue.
 @property (nonatomic, nullable) NSMutableSet<NSURL *> *writtenExternalPingURLs;
@@ -45,6 +117,7 @@ NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
             };
         }
         _volumesProvider = [volumesProvider copy];
+        _token = [NSUUID UUID].UUIDString;
     }
     return self;
 }
@@ -53,21 +126,27 @@ NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
 {
     NSArray<NSURLResourceKey> *keys = @[NSURLVolumeIsInternalKey, NSURLVolumeIsLocalKey,
                                         NSURLVolumeIsReadOnlyKey, NSURLVolumeIsRootFileSystemKey];
+    // Hidden volumes too: an external drive can be mounted hidden; the
+    // eligibility check below filters out the system ones.
     Auto volumes = [NSFileManager.defaultManager mountedVolumeURLsIncludingResourceValuesForKeys:keys
-                                                                                        options:NSVolumeEnumerationSkipHiddenVolumes];
+                                                                                        options:0];
     Auto result = [NSMutableArray<NSURL *> array];
     for(NSURL *volume in volumes)
     {
         NSDictionary<NSURLResourceKey, id> *values = [volume resourceValuesForKeys:keys error:nil];
-        if([values[NSURLVolumeIsRootFileSystemKey] boolValue]) { continue; }
-        if([values[NSURLVolumeIsLocalKey] boolValue] == NO) { continue; }   // network shares
-        if([values[NSURLVolumeIsReadOnlyKey] boolValue]) { continue; }
-        // Unknown counts as internal: only touch drives known to be external.
-        NSNumber *isInternal = values[NSURLVolumeIsInternalKey];
-        if(isInternal == nil || isInternal.boolValue) { continue; }
-        [result addObject:volume];
+        if([self isEligibleVolumeWithResourceValues:values]) { [result addObject:volume]; }
     }
     return [result copy];
+}
+
++ (BOOL)isEligibleVolumeWithResourceValues:(NSDictionary<NSURLResourceKey, id> *)values
+{
+    if([values[NSURLVolumeIsRootFileSystemKey] boolValue]) { return NO; }
+    if([values[NSURLVolumeIsLocalKey] boolValue] == NO) { return NO; }   // network shares
+    if([values[NSURLVolumeIsReadOnlyKey] boolValue]) { return NO; }
+    // Unknown counts as internal: only touch drives known to be external.
+    NSNumber *isInternal = values[NSURLVolumeIsInternalKey];
+    return isInternal != nil && isInternal.boolValue == NO;
 }
 
 - (void)dealloc
@@ -125,23 +204,22 @@ NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
     Auto log = self.log;
     // Read in the cancel handler, after the last event on the same queue.
     Auto writtenExternalPingURLs = self.writtenExternalPingURLs;
+    Auto token = self.token;
 
     // `dispatch_source_cancel` is asynchronous — an in-flight timer
     // event can still execute and rewrite the ping file. Defer the
     // removal to the cancel handler, which runs after every pending
     // event has finished, so we never race a write against a delete.
     dispatch_source_set_cancel_handler(source, ^{
-        NSError *removalError = nil;
-        [NSFileManager.defaultManager removeItemAtURL:pingURL error:&removalError];
-        if(removalError != nil && removalError.code != NSFileNoSuchFileError)
-        {
-            os_log_error(log, "drive-alive stop: failed to remove ping file: %{public}@", removalError);
-        }
+        // Only files this timer wrote: a replacement timer (same paths)
+        // may already have rewritten them. Best effort for external
+        // volumes, which may have been ejected meanwhile.
+        KYADriveAliveRemovePing(pingURL.path, token);
         for(NSURL *externalPingURL in writtenExternalPingURLs)
         {
-            // Best effort: the volume may have been ejected meanwhile.
-            [NSFileManager.defaultManager removeItemAtURL:externalPingURL error:nil];
+            KYADriveAliveRemovePing(externalPingURL.path, token);
         }
+        os_log(log, "drive-alive stop: removed this session's ping files");
     });
     dispatch_source_cancel(source);
 
@@ -152,10 +230,10 @@ NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
 
 - (void)touchPingFile
 {
-    Auto data = [[NSString stringWithFormat:@"keepingyouawake %f\n",
+    Auto data = [[NSString stringWithFormat:@"%@%@ %f\n", KYADriveAliveContentPrefix, self.token,
                   NSDate.date.timeIntervalSince1970] dataUsingEncoding:NSUTF8StringEncoding];
     NSError *error = nil;
-    if(![data writeToURL:self.pingFileURL options:NSDataWritingAtomic error:&error])
+    if(!KYADriveAliveWritePing(self.pingFileURL.path, data, &error))
     {
         os_log_error(self.log, "%{public}@ ping write failed: %{public}@", self, error);
     }
@@ -164,10 +242,8 @@ NSString * const KYADriveAlivePingFileName = @".KeepingYouAwake-DriveAlive";
     for(NSURL *volume in self.volumesProvider())
     {
         NSURL *externalPingURL = [volume URLByAppendingPathComponent:KYADriveAlivePingFileName isDirectory:NO];
-        // Not atomic: an in-place write is real I/O on that drive, and
-        // there is no temporary file to leave behind if it is ejected.
         NSError *volumeError = nil;
-        if([data writeToURL:externalPingURL options:0 error:&volumeError])
+        if(KYADriveAliveWritePing(externalPingURL.path, data, &volumeError))
         {
             [self.writtenExternalPingURLs addObject:externalPingURL];
             [self.failedVolumeURLs removeObject:volume];
