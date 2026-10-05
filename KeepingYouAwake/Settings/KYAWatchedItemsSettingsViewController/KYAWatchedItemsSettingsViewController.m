@@ -538,6 +538,18 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     [self updateRemoveButtonsEnabledState];
 }
 
+- (void)controlTextDidEndEditing:(NSNotification *)notification
+{
+    if(notification.object != self.ssidTableView) { return; }
+    // Also posted when Escape cancels editing, which commits nothing. Run
+    // after the table has applied a committed value, so only a row that
+    // is still empty is dropped.
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf removeEmptySSIDPlaceholders];
+    });
+}
+
 - (void)viewWillDisappear
 {
     [super viewWillDisappear];
