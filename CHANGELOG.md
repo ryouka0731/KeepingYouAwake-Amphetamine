@@ -6,7 +6,40 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-(no changes since v1.7.0-amphetamine.4 — add new entries here.)
+(no changes since v1.7.0-amphetamine.5 — add new entries here.)
+
+### v1.7.0-amphetamine.5 (2026-10-06)
+
+#### Triggers
+- **External audio output trigger** — activate while audio is routed to a non-built-in device (Bluetooth, USB, HDMI, AirPlay, …). Toggle: `ActivateOnExternalAudioOutputEnabled`. [#78](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/78)
+- **CPU load trigger** — activate while CPU usage stays above a threshold (default 50 %, `CPULoadActivationThreshold`) for 30 s. Toggle: `ActivateOnCPULoadEnabled`. [#79](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/79)
+- **Mouse jiggler** — nudges the pointer by 1 px every 60 s during a session so idle-time "away" detectors stay quiet. Toggle: `MouseJigglerEnabled`. [#77](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/77)
+- Disabling a trigger now ends the session it started. [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+- Watched Wi-Fi networks and apps edited at runtime take effect immediately (no relaunch). [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+
+#### Automation
+- **AppleScript / sdef** — `activate kya [for <seconds>]`, `deactivate kya`, `toggle kya`, and `active` / `remaining seconds` / `source` properties. [#84](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/84), [#99](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/99)
+- **`kya` CLI** — `kya activate 30m`, `kya deactivate`, `kya toggle`, `kya status [--json]` (Python, no dependencies). [#82](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/82)
+- **MCP server** (`kya-mcp-server`) — drive KeepingYouAwake from Claude Code or any MCP client. Requires `mcp>=1.0,<2`. [#80](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/80), [#81](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/81), [#101](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/101)
+
+#### Settings
+- **Watched Items pane** — list editors for watched Wi-Fi SSIDs, apps, download folders and schedule windows. [#86](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/86), [#89](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/89)
+
+#### Fixes
+- "Activate" from the URL scheme, AppleScript, `kya`, MCP or Shortcuts while already active no longer stops the mouse jiggler, Drive Alive and power monitoring or shows the inactive icon. [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+- **Watched Wi-Fi trigger works on macOS 14+**: KeepingYouAwake now asks for Location access, which macOS requires to read the network name. [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+- Quitting or crashing during a session no longer leaves it reported as active by `kya status` / MCP; dangling activity-log entries are closed on the next launch (`endedReason: "app-terminated"`). [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+- `kya activate` without a duration and MCP `duration: "indefinite"` now really activate indefinitely (they used the default duration). [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+- AppleScript and Shortcuts commands are delivered to this app, never to an upstream KeepingYouAwake that is also installed. [#99](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/99), [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+- Sessions suspended for fast user switching resume with their original trigger. [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
+- Menu bar countdown shows next to the icon again. [#75](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/75)
+- Release builds use the Direct scheme so Sparkle updates are enabled; the appcast refreshes after each release. [#73](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/73), [#74](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/74), [#76](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/76)
+
+#### Known issues
+- **Drive Alive** only keeps the startup disk active; it does not touch external drives yet.
+
+#### Tests / infra
+- Main-target XCTest target, SPM test gaps filled, pytest suites for `kya` / MCP, line-coverage gate (37 %), E2E for URL scheme, AppleScript, CLI, activity log, natural expiry, re-activation and crash recovery, Sparkle appcast signature smoke test. [#87](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/87), [#88](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/88), [#90](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/90), [#91](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/91), [#92](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/92), [#93](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/93), [#94](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/94), [#95](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/95), [#96](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/96), [#97](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/97), [#98](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/98), [#102](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/102)
 
 ### v1.7.0-amphetamine.4 (2026-05-09)
 
