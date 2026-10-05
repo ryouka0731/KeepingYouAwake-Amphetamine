@@ -96,6 +96,10 @@
     if(self)
     {
         _ownership = [[KYAActivationOwnership alloc] init];
+        // -1 = nothing to resume after fast user switching. The 0 default
+        // means "indefinite", so returning to this session without having
+        // left during a session started an indefinite session.
+        _workspaceScheduledTimeInterval = -1;
 
         // Sessions left open by a crashed or killed previous process would
         // otherwise read as active to the CLI / MCP server. Must run before
