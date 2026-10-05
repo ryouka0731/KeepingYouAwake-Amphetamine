@@ -82,6 +82,92 @@
     [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeB] exists:NO];
 }
 
+- (void)assertFileAtURL:(NSURL *)url staysPresentFor:(NSTimeInterval)seconds
+{
+    NSPredicate *gone = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return [NSFileManager.defaultManager fileExistsAtPath:url.path] == NO;
+    }];
+    XCTestExpectation *removed = [self expectationForPredicate:gone evaluatedWithObject:self handler:nil];
+    removed.inverted = YES;
+    [self waitForExpectationsWithTimeout:seconds handler:nil];
+}
+
+- (void)testExistingUserFileIsNeitherOverwrittenNorRemoved
+{
+    NSURL *ping = [self pingURLInVolume:self.volumeA];
+    XCTAssertTrue([@"user data" writeToURL:ping atomically:YES encoding:NSUTF8StringEncoding error:nil]);
+    NSArray<NSURL *> *volumes = @[self.volumeA, self.volumeB];
+    KYADriveAliveTimer *timer = [[KYADriveAliveTimer alloc] initWithInterval:60.0
+                                                             volumesProvider:^NSArray<NSURL *> *{ return volumes; }];
+    [timer start];
+    [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeB] exists:YES];
+    [timer stop];
+    [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeB] exists:NO];
+
+    XCTAssertEqualObjects([NSString stringWithContentsOfURL:ping encoding:NSUTF8StringEncoding error:nil], @"user data");
+}
+
+- (void)testSymlinkTargetIsNotOverwritten
+{
+    NSURL *target = [self.volumeB URLByAppendingPathComponent:@"precious.txt"];
+    XCTAssertTrue([@"precious" writeToURL:target atomically:YES encoding:NSUTF8StringEncoding error:nil]);
+    XCTAssertTrue([NSFileManager.defaultManager createSymbolicLinkAtURL:[self pingURLInVolume:self.volumeA]
+                                                     withDestinationURL:target
+                                                                  error:nil]);
+    NSArray<NSURL *> *volumes = @[self.volumeA];
+    KYADriveAliveTimer *timer = [[KYADriveAliveTimer alloc] initWithInterval:60.0
+                                                             volumesProvider:^NSArray<NSURL *> *{ return volumes; }];
+    [timer start];
+    [self assertFileAtURL:target staysPresentFor:1.0];
+    [timer stop];
+    [self assertFileAtURL:target staysPresentFor:1.0];
+
+    XCTAssertEqualObjects([NSString stringWithContentsOfURL:target encoding:NSUTF8StringEncoding error:nil], @"precious");
+}
+
+- (void)testStoppingOldTimerKeepsReplacementTimersPing
+{
+    NSArray<NSURL *> *volumes = @[self.volumeA];
+    KYADriveAliveVolumesProvider provider = ^NSArray<NSURL *> *{ return volumes; };
+    KYADriveAliveTimer *old = [[KYADriveAliveTimer alloc] initWithInterval:60.0 volumesProvider:provider];
+    [old start];
+    [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeA] exists:YES];
+
+    KYADriveAliveTimer *replacement = [[KYADriveAliveTimer alloc] initWithInterval:60.0 volumesProvider:provider];
+    [replacement start];
+    // Let the replacement rewrite the shared path before the old one stops.
+    [self assertFileAtURL:[self pingURLInVolume:self.volumeA] staysPresentFor:0.5];
+    [old stop];
+    [self assertFileAtURL:[self pingURLInVolume:self.volumeA] staysPresentFor:1.0];
+
+    [replacement stop];
+    [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeA] exists:NO];
+}
+
+- (void)testVolumeEligibility
+{
+    NSDictionary<NSURLResourceKey, id> *external = @{
+        NSURLVolumeIsInternalKey: @NO,
+        NSURLVolumeIsLocalKey: @YES,
+        NSURLVolumeIsReadOnlyKey: @NO,
+        NSURLVolumeIsRootFileSystemKey: @NO,
+    };
+    XCTAssertTrue([KYADriveAliveTimer isEligibleVolumeWithResourceValues:external]);
+
+    NSDictionary<NSURLResourceKey, id> *(^with)(NSURLResourceKey, id) = ^(NSURLResourceKey key, id value) {
+        NSMutableDictionary *values = [external mutableCopy];
+        if(value == nil) { [values removeObjectForKey:key]; } else { values[key] = value; }
+        return [values copy];
+    };
+    XCTAssertFalse([KYADriveAliveTimer isEligibleVolumeWithResourceValues:with(NSURLVolumeIsInternalKey, @YES)]);
+    XCTAssertFalse([KYADriveAliveTimer isEligibleVolumeWithResourceValues:with(NSURLVolumeIsInternalKey, nil)],
+                   @"unknown counts as internal");
+    XCTAssertFalse([KYADriveAliveTimer isEligibleVolumeWithResourceValues:with(NSURLVolumeIsLocalKey, @NO)],
+                   @"network share");
+    XCTAssertFalse([KYADriveAliveTimer isEligibleVolumeWithResourceValues:with(NSURLVolumeIsReadOnlyKey, @YES)]);
+    XCTAssertFalse([KYADriveAliveTimer isEligibleVolumeWithResourceValues:with(NSURLVolumeIsRootFileSystemKey, @YES)]);
+}
+
 - (void)testDefaultVolumesExcludeTheRootFileSystem
 {
     for(NSURL *volume in [KYADriveAliveTimer externalWritableVolumeURLs])
