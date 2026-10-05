@@ -28,6 +28,12 @@ def test_build_number(tag, expected):
     assert generate_appcast.parse_build_number(tag, "") == expected
 
 
+@pytest.mark.parametrize("tag", ["v1.100.0-amphetamine.1", "v1.7.100-amphetamine.1", "v1.7.0-amphetamine.100"])
+def test_out_of_range_component_is_rejected(tag):
+    with pytest.raises(ValueError):
+        generate_appcast.parse_build_number(tag, "")
+
+
 def test_build_numbers_increase_in_release_order():
     tags = [
         "v1.7.0-amphetamine.9",
