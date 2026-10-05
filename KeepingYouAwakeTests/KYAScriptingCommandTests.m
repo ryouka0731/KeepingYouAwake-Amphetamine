@@ -24,6 +24,8 @@
 //
 
 #import <XCTest/XCTest.h>
+#import <KYAApplicationEvents/KYAApplicationEvents.h>
+#import <KYAApplicationSupport/KYAApplicationSupport.h>
 #import "KYAScripting.h"
 
 #pragma mark - Testable command subclasses
@@ -196,6 +198,177 @@
     NSDate *startedAt = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
 
     XCTAssertTrue([KYAScriptingProxy kya_isEntryStartedAt:startedAt fromLaunchAt:nil]);
+}
+
+@end
+
+#pragma mark - Proxy state (regression tests for the /code-review findings)
+
+/// Exercises `KYAScriptingProxy` end to end against a temporary
+/// activity-log file, with the launch date pinned so the stale-entry
+/// guard is deterministic. Each test reproduces a bug that the
+/// previous implementation had; see the per-test comments.
+@interface KYAScriptingProxyStateTests : XCTestCase
+@property (nonatomic) NSURL *logURL;
+@property (nonatomic) KYAScriptingProxy *proxy;
+@end
+
+@implementation KYAScriptingProxyStateTests
+
+/// 2026-01-01T00:00:00Z — whole seconds, as the JSONL stores it.
+static NSString * const KYATestStartedAtString = @"2026-01-01T00:00:00Z";
+
+- (NSDate *)startedAt
+{
+    return [[NSISO8601DateFormatter new] dateFromString:KYATestStartedAtString];
+}
+
+- (void)setUp
+{
+    [super setUp];
+    NSString *name = [NSString stringWithFormat:@"kya-scripting-%@.jsonl", NSUUID.UUID.UUIDString];
+    self.logURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:name]];
+
+    self.proxy = KYAScriptingProxy.sharedProxy;
+    [self.proxy kya_resetForTesting];
+    [self.proxy kya_setActivityLoggerForTesting:[[KYAActivityLogger alloc] initWithFileURL:self.logURL
+                                                                           maximumEntries:100]];
+    // Default: launched well before the entry, so it is never stale.
+    [self.proxy kya_setLaunchDateForTesting:[self.startedAt dateByAddingTimeInterval:-60]];
+}
+
+- (void)tearDown
+{
+    [self.proxy kya_resetForTesting];
+    [KYAScriptingProxy kya_setURLDispatcherForTesting:nil];
+    for(NSString *action in @[@"activate", @"deactivate", @"toggle"])
+    {
+        [KYAEventHandler.defaultHandler removeActionNamed:action];
+    }
+    [NSFileManager.defaultManager removeItemAtURL:self.logURL error:nil];
+    [super tearDown];
+}
+
+- (void)writeOpenEntry
+{
+    NSString *line = [NSString stringWithFormat:
+        @"{\"startedAt\":\"%@\",\"source\":\"ac-power\",\"requestedDuration\":-1}\n",
+        KYATestStartedAtString];
+    XCTAssertTrue([line writeToURL:self.logURL atomically:YES encoding:NSUTF8StringEncoding error:nil]);
+}
+
+- (void)writeClosedEntry
+{
+    NSString *line = [NSString stringWithFormat:
+        @"{\"startedAt\":\"%@\",\"endedAt\":\"2026-01-01T00:00:05Z\",\"source\":\"ac-power\","
+        @"\"requestedDuration\":-1,\"endedReason\":\"user-cancelled\"}\n",
+        KYATestStartedAtString];
+    XCTAssertTrue([line writeToURL:self.logURL atomically:YES encoding:NSUTF8StringEncoding error:nil]);
+}
+
+- (void)captureDispatchedURLs
+{
+    [KYAScriptingProxy kya_setURLDispatcherForTesting:^(NSURL *url) {}];
+}
+
+#pragma mark Finding 1: session started in the launch second
+
+- (void)testSessionStartedInLaunchSecondIsActive
+{
+    // Launched at 00:00:00.4; the session started at 00:00:00.7 but is
+    // persisted as 00:00:00. A sub-second comparison treated it as
+    // stale, so `active` stayed false for the whole session.
+    [self.proxy kya_setLaunchDateForTesting:[self.startedAt dateByAddingTimeInterval:0.4]];
+    [self writeOpenEntry];
+
+    XCTAssertTrue(self.proxy.isActive);
+    XCTAssertEqualObjects(self.proxy.source, @"ac-power");
+}
+
+- (void)testSessionFromPreviousLaunchIsStale
+{
+    // Guard must still reject an entry left open by a prior process.
+    [self.proxy kya_setLaunchDateForTesting:[self.startedAt dateByAddingTimeInterval:1.4]];
+    [self writeOpenEntry];
+
+    XCTAssertFalse(self.proxy.isActive);
+    XCTAssertEqualObjects(self.proxy.source, @"");
+    XCTAssertEqual(self.proxy.remainingSeconds, -1);
+}
+
+#pragma mark Finding 2: commands must stay in-process
+
+- (void)testCommandsDispatchToInProcessEventHandler
+{
+    // With no test dispatcher installed the commands used to go through
+    // NSWorkspace / Launch Services, which may deliver the URL to a
+    // different app registering keepingyouawake:// (or to none at all
+    // in a test bundle). They must reach this process's handler.
+    NSDictionary<NSString *, XCTestExpectation *> *expectations = @{
+        @"activate":   [self expectationWithDescription:@"activate handled in-process"],
+        @"deactivate": [self expectationWithDescription:@"deactivate handled in-process"],
+        @"toggle":     [self expectationWithDescription:@"toggle handled in-process"],
+    };
+    __block NSString *activateSeconds = nil;
+    [expectations enumerateKeysAndObjectsUsingBlock:^(NSString *action, XCTestExpectation *expectation, BOOL *stop) {
+        [KYAEventHandler.defaultHandler registerActionNamed:action block:^(KYAEvent *event) {
+            if([action isEqualToString:@"activate"]) { activateSeconds = event.arguments[@"seconds"]; }
+            [expectation fulfill];
+        }];
+    }];
+
+    KYATestableActivateCommand *activate = [KYATestableActivateCommand new];
+    activate.injectedArguments = @{ @"Duration": @1800 };
+    XCTAssertEqualObjects([activate performDefaultImplementation], @YES);
+    XCTAssertEqualObjects([[KYATestableDeactivateCommand new] performDefaultImplementation], @YES);
+    XCTAssertEqualObjects([[KYATestableToggleCommand new] performDefaultImplementation], @YES);
+
+    [self waitForExpectationsWithTimeout:2.0 handler:nil];
+    XCTAssertEqualObjects(activateSeconds, @"1800");
+}
+
+#pragma mark Finding 3: stale cache after a command
+
+- (void)testDeactivateIsVisibleImmediately
+{
+    [self captureDispatchedURLs];
+    [self writeOpenEntry];
+    XCTAssertTrue(self.proxy.isActive, @"primes the 1 s cache with the open entry");
+
+    // The app ends the session…
+    [self writeClosedEntry];
+    [[KYATestableDeactivateCommand new] performDefaultImplementation];
+
+    // …and the next read (well inside the old 1 s TTL) must see it.
+    XCTAssertFalse(self.proxy.isActive);
+    XCTAssertEqual(self.proxy.remainingSeconds, -1);
+    XCTAssertEqualObjects(self.proxy.source, @"");
+}
+
+- (void)testReadBetweenDispatchAndActionDoesNotPinOldState
+{
+    [self captureDispatchedURLs];
+    [self writeOpenEntry];
+    XCTAssertTrue(self.proxy.isActive);
+
+    // Command dispatched, but the asynchronous action hasn't run yet:
+    // a read now legitimately sees the old state…
+    [[KYATestableDeactivateCommand new] performDefaultImplementation];
+    XCTAssertTrue(self.proxy.isActive);
+
+    // …and once the action lands it must not be masked by that read.
+    [self writeClosedEntry];
+    XCTAssertFalse(self.proxy.isActive);
+}
+
+- (void)testCacheStillServesRepeatedReadsWithoutCommands
+{
+    // Sanity check that the TTL cache still does its job: with no
+    // command in between, a read inside the TTL is served from cache.
+    [self writeOpenEntry];
+    XCTAssertTrue(self.proxy.isActive);
+    [self writeClosedEntry];
+    XCTAssertTrue(self.proxy.isActive, @"served from the 1 s cache");
 }
 
 @end
