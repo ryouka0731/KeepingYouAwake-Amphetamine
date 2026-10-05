@@ -361,6 +361,23 @@ static NSString * const KYATestStartedAtString = @"2026-01-01T00:00:00Z";
     XCTAssertFalse(self.proxy.isActive);
 }
 
+- (void)testReadNearEndOfBypassWindowIsNotCachedPastIt
+{
+    [self captureDispatchedURLs];
+    [self writeOpenEntry];
+    [[KYATestableDeactivateCommand new] performDefaultImplementation];
+
+    // A read late in the 1 s bypass window still sees the open entry…
+    [NSThread sleepForTimeInterval:0.8];
+    XCTAssertTrue(self.proxy.isActive);
+
+    // …the action lands, and once the window has ended that late read
+    // must not be served from cache for another TTL.
+    [self writeClosedEntry];
+    [NSThread sleepForTimeInterval:0.4];
+    XCTAssertFalse(self.proxy.isActive);
+}
+
 - (void)testCacheStillServesRepeatedReadsWithoutCommands
 {
     // Sanity check that the TTL cache still does its job: with no
