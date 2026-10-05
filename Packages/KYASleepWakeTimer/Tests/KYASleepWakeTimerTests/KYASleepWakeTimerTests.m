@@ -151,4 +151,30 @@
     XCTAssertEqual(delegate.lastWillActivateInterval, 300.0);
 }
 
+- (void)testEachSessionEndRunsThatSessionsCompletion
+{
+    // Forced terminations (invalidate) dispatch the completion
+    // deterministically, without waiting on caffeinate signals.
+    XCTestExpectation *first = [self expectationWithDescription:@"first session's completion"];
+    first.assertForOverFulfill = YES;
+    XCTestExpectation *second = [self expectationWithDescription:@"second session's completion"];
+    second.assertForOverFulfill = YES;
+
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {
+        XCTAssertTrue(cancelled);
+        [first fulfill];
+    }];
+    [self.timer invalidate];
+    // Replace the session before the main queue delivers the first end.
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {
+        XCTAssertTrue(cancelled);
+        [second fulfill];
+    }];
+    [self.timer invalidate];
+
+    [self waitForExpectations:@[first, second] timeout:2.0 enforceOrder:YES];
+    // -tearDown's -invalidate would run the completion again.
+    self.timer.completionBlock = nil;
+}
+
 @end
