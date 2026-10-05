@@ -52,6 +52,18 @@ def _write_log(tmp_path: Path, lines) -> Path:
     return p
 
 
+@pytest.fixture(autouse=True)
+def _no_container_log(tmp_path, monkeypatch):
+    """Keep a real sandbox-container log on the dev machine out of tests."""
+    monkeypatch.setattr(srv, "CONTAINER_ACTIVITY_LOG_PATH", tmp_path / "no-container" / "activity.jsonl")
+
+
+@pytest.fixture(autouse=True)
+def _kya_running(monkeypatch):
+    """Pretend KYA is running; tests about a stopped app override this."""
+    monkeypatch.setattr(srv, "_kya_is_running", lambda: True)
+
+
 @pytest.fixture()
 def patched_log(tmp_path, monkeypatch):
     def _install(lines):
@@ -180,7 +192,9 @@ def test_call_kya_activate_seconds(captured_urls):
 def test_call_kya_activate_indefinite(captured_urls):
     out = json.loads(_text(_call("kya_activate", {"duration": "indefinite"})))
     assert out == {"activated": True, "request": "indefinite"}
-    assert captured_urls == ["keepingyouawake:///activate"]
+    # Without an explicit seconds=0 the app falls back to its default
+    # duration, which is not indefinite.
+    assert captured_urls == ["keepingyouawake:///activate?seconds=0"]
 
 
 def test_call_kya_activate_until_end_of_day(captured_urls):
@@ -317,3 +331,33 @@ def test_set_default_accepts_allowed_key_false_value(monkeypatch):
     assert "-bool" in captured["cmd"]
     assert "NO" in captured["cmd"]
     assert "YES" not in captured["cmd"]
+
+
+def test_current_status_ignores_stale_open_entry_behind_newer_closed(patched_log):
+    # An entry left open by a quit/crash must not be reported once a newer
+    # session has been opened and closed.
+    patched_log([
+        {"startedAt": "2024-01-01T00:00:00Z", "source": "stale"},
+        {"startedAt": "2024-01-02T00:00:00Z", "endedAt": "2024-01-02T01:00:00Z", "source": "user"},
+    ])
+    assert srv._current_status() == {"active": False}
+
+
+def test_activity_log_path_prefers_most_recently_written(tmp_path, monkeypatch):
+    import os
+    home_log = tmp_path / "home" / "activity.jsonl"
+    container_log = tmp_path / "container" / "activity.jsonl"
+    for path in (home_log, container_log):
+        path.parent.mkdir(parents=True)
+        path.write_text("{}\n", encoding="utf-8")
+    os.utime(home_log, (1_000, 1_000))
+    os.utime(container_log, (2_000, 2_000))
+    monkeypatch.setattr(srv, "ACTIVITY_LOG_PATH", home_log)
+    monkeypatch.setattr(srv, "CONTAINER_ACTIVITY_LOG_PATH", container_log)
+    assert srv._activity_log_path() == container_log
+
+
+def test_current_status_inactive_when_kya_not_running(patched_log, monkeypatch):
+    patched_log([{"startedAt": "2024-01-01T00:00:00Z", "source": "user"}])
+    monkeypatch.setattr(srv, "_kya_is_running", lambda: False)
+    assert srv._current_status() == {"active": False}

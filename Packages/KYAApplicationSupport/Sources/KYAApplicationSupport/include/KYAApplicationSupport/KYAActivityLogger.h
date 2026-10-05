@@ -30,6 +30,7 @@ KYA_EXPORT NSString * const KYAActivityLogSourceCPULoad;
 KYA_EXPORT NSString * const KYAActivityLogEndedReasonExpired;          // timer hit fireDate
 KYA_EXPORT NSString * const KYAActivityLogEndedReasonUserCancelled;    // status-item click, menu, URL scheme
 KYA_EXPORT NSString * const KYAActivityLogEndedReasonTriggerCancelled; // feature trigger ended its own session
+KYA_EXPORT NSString * const KYAActivityLogEndedReasonAppTerminated;    // app quit (or crashed) while the session was open
 
 /// One entry as decoded from the JSONL file. All values are immutable.
 @interface KYAActivityLogEntry : NSObject
@@ -83,6 +84,17 @@ KYA_EXPORT NSString * const KYAActivityLogEndedReasonTriggerCancelled; // featur
 /// Append a completion marker with an explicit reason. Use one of the
 /// KYAActivityLogEndedReason* constants for stable JSONL semantics.
 - (void)recordActivationEndedWithReason:(NSString *)reason;
+
+/// Like -recordActivationEndedWithReason:, but returns only after the
+/// entry has been written. Use it on app termination, where an async
+/// write would never run.
+- (void)recordActivationEndedSynchronouslyWithReason:(NSString *)reason;
+
+/// Closes every entry that has no `endedAt` — sessions left open by a
+/// previous process that crashed or was killed. `endedAt` is set to now
+/// (the real end time is unknown). Call once at launch, before the first
+/// -recordActivationStartedFromSource:requestedDuration:. Synchronous.
+- (void)closeDanglingEntriesWithReason:(NSString *)reason;
 
 /// Returns the last `count` entries, newest first. Synchronous read.
 - (NSArray<KYAActivityLogEntry *> *)recentEntriesWithLimit:(NSUInteger)count;

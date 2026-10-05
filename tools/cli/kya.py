@@ -31,6 +31,33 @@ from pathlib import Path
 ACTIVITY_LOG_PATH = (
     Path.home() / "Library" / "Application Support" / "KeepingYouAwake" / "activity.jsonl"
 )
+# Where a sandboxed (Xcode-signed) build writes the same file. Release
+# builds are ad-hoc signed without entitlements, so they use the path above.
+CONTAINER_ACTIVITY_LOG_PATH = (
+    Path.home() / "Library" / "Containers" / "info.marcel-dierkes.KeepingYouAwake"
+    / "Data" / "Library" / "Application Support" / "KeepingYouAwake" / "activity.jsonl"
+)
+
+
+def _activity_log_path() -> Path:
+    """The activity log KYA is writing to: the most recently modified of the
+    unsandboxed and sandbox-container locations (unsandboxed if neither exists)."""
+    existing = [p for p in (ACTIVITY_LOG_PATH, CONTAINER_ACTIVITY_LOG_PATH) if p.exists()]
+    if not existing:
+        return ACTIVITY_LOG_PATH
+    return max(existing, key=lambda p: p.stat().st_mtime)
+
+
+def _kya_is_running() -> bool:
+    """Whether a KeepingYouAwake process exists. An open log entry while it
+    isn't running was left by a crash or kill (KYA repairs it on next launch)."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-x", "KeepingYouAwake"], capture_output=True, check=False, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True  # can't tell — don't hide a real session
+    return result.returncode == 0
 
 
 def _open_url(url: str) -> int:
@@ -61,12 +88,13 @@ def parse_duration(text: str) -> int:
 def _read_recent_entries(limit: int = 50) -> list[dict]:
     """Newest-first up to `limit`. Bounded deque keeps memory O(limit)."""
     from collections import deque
-    if not ACTIVITY_LOG_PATH.exists():
+    log_path = _activity_log_path()
+    if not log_path.exists():
         return []
     if int(limit) <= 0:
         return []
     tail: deque[dict] = deque(maxlen=int(limit))
-    with ACTIVITY_LOG_PATH.open("r", encoding="utf-8") as f:
+    with log_path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -89,7 +117,12 @@ def _safe_iso_to_epoch(s) -> float | None:
 
 
 def _current_status() -> dict:
-    entries = _read_recent_entries(50)
+    # Only one session is open at a time, so the newest entry decides. An
+    # older entry without endedAt was left behind by a quit or crash, and
+    # so is the newest one while KYA isn't running.
+    if not _kya_is_running():
+        return {"active": False}
+    entries = _read_recent_entries(1)
     for entry in entries:
         if not entry.get("endedAt"):
             started = entry.get("startedAt")
@@ -134,7 +167,9 @@ def cmd_activate(args: argparse.Namespace) -> int:
         seconds = int((tomorrow - now).total_seconds())
         return _open_url(f"keepingyouawake:///activate?seconds={seconds}")
     if args.duration is None:
-        return _open_url("keepingyouawake:///activate")
+        # Explicit seconds=0: an activate URL without a duration uses the
+        # app's default duration, which is not indefinite.
+        return _open_url("keepingyouawake:///activate?seconds=0")
     seconds = parse_duration(args.duration)
     return _open_url(f"keepingyouawake:///activate?seconds={seconds}")
 

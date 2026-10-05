@@ -42,7 +42,12 @@ NSTimeInterval const KYASleepWakeTimeIntervalIndefinite = 0;
 
 - (void)dealloc
 {
-    [self invalidate];
+    // Only stop caffeinate. -invalidate dispatches the completion and
+    // delegate callbacks in blocks that capture self, which would run
+    // after this object is freed (a use-after-free once the main queue
+    // drains).
+    _caffeinateTask.terminationHandler = nil;
+    [_caffeinateTask terminate];
 }
 
 #pragma mark - Scheduling
@@ -146,11 +151,17 @@ NSTimeInterval const KYASleepWakeTimeIntervalIndefinite = 0;
     self.fireDate = nil;
     [self didChangeValueForKey:@"scheduled"];
 
-    if(self.completionBlock)
+    // Capture the block now: by the time the main queue runs this, a new
+    // session may have been scheduled with its own completion, which must
+    // not be invoked for this (older) session's end.
+    // Clear it so a later -invalidate (e.g. on app quit after a natural
+    // expiry) can't run the finished session's completion a second time.
+    KYASleepWakeTimerCompletionBlock completion = self.completionBlock;
+    self.completionBlock = nil;
+    if(completion)
     {
-        AutoWeak weakSelf = self;
         dispatch_async(dispatch_get_main_queue(), ^{
-            weakSelf.completionBlock(forcedTermination);
+            completion(forcedTermination);
         });
     }
     

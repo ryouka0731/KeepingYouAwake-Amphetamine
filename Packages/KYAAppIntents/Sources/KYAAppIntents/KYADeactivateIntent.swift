@@ -14,7 +14,7 @@ public struct KYADeactivateIntent: AppIntent {
     public init() {}
 
     public func perform() async throws -> some IntentResult {
-        try KYAURLScheme.dispatch(.deactivate)
+        try await KYAURLScheme.dispatch(.deactivate)
         return .result()
     }
 }

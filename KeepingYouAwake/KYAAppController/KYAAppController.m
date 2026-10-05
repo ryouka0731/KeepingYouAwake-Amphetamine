@@ -17,17 +17,21 @@
 #import "KYAActivationDurationsMenuController.h"
 #import "KYAActivationUserNotification.h"
 #import "KYADriveAliveTimer.h"
+@import CoreLocation;
 
 // Deprecated!
 #define KYA_MINUTES(m) (m * 60.0f)
 #define KYA_HOURS(h) (h * 3600.0f)
 
-@interface KYAAppController () <KYAStatusItemControllerDataSource, KYAStatusItemControllerDelegate, KYAActivationDurationsMenuControllerDelegate, KYASleepWakeTimerDelegate, KYAScheduleMonitorDelegate, KYADownloadActivityMonitorDelegate, KYAAudioOutputMonitorDelegate, KYACPULoadMonitorDelegate>
+@interface KYAAppController () <KYAStatusItemControllerDataSource, KYAStatusItemControllerDelegate, KYAActivationDurationsMenuControllerDelegate, KYASleepWakeTimerDelegate, KYAScheduleMonitorDelegate, KYADownloadActivityMonitorDelegate, KYAAudioOutputMonitorDelegate, KYACPULoadMonitorDelegate, CLLocationManagerDelegate>
 @property (nonatomic, readwrite) KYASleepWakeTimer *sleepWakeTimer;
 @property (nonatomic, readwrite) KYAStatusItemController *statusItemController;
 @property (nonatomic) KYAActivationDurationsMenuController *menuController;
 
 @property (nonatomic) NSTimeInterval workspaceScheduledTimeInterval;
+// Source of the session suspended on fast user switching, so a trigger
+// session resumes as a trigger session (and its trigger can still end it).
+@property (nonatomic) KYAActivationSource workspaceScheduledSource;
 
 // Battery Status
 @property (nonatomic, direct, getter=isBatteryOverrideEnabled) BOOL batteryOverrideEnabled;
@@ -39,6 +43,11 @@
 // Last observed AC state, used to gate the activate-on-AC trigger on
 // transitions (unplugged → AC) instead of every battery notification.
 @property (nonatomic) BOOL acTriggerWasOnAC;
+
+// Incremented on every activation. A session's completion block captures
+// its value, so the asynchronous end of a replaced session can tell it is
+// no longer the current one — even if the replacement already ended too.
+@property (nonatomic) NSUInteger sessionGeneration;
 
 // Who started the active session. Holds the activation source for the
 // running timer and naturally encodes the invariant "a feature trigger
@@ -64,6 +73,15 @@
 // CPU load trigger.
 @property (nonatomic, nullable) KYACPULoadMonitor *cpuLoadMonitor;
 
+// Watched Wi-Fi SSID / application lists as last reconciled, so a
+// defaults change only re-evaluates the trigger when its list changed.
+@property (copy, nonatomic, nullable) NSArray<NSString *> *reconciledWatchedSSIDs;
+@property (copy, nonatomic, nullable) NSArray<NSString *> *reconciledWatchedBundleIdentifiers;
+@property (nonatomic) BOOL hasReconciledWatchedSSIDs;
+@property (nonatomic) BOOL hasReconciledWatchedBundleIdentifiers;
+// Requests the Location authorization macOS requires to read the SSID.
+@property (nonatomic, nullable) CLLocationManager *locationManager;
+
 // Menu
 @property (nonatomic) NSMenu *menu;
 @end
@@ -78,6 +96,11 @@
     if(self)
     {
         _ownership = [[KYAActivationOwnership alloc] init];
+
+        // Sessions left open by a crashed or killed previous process would
+        // otherwise read as active to the CLI / MCP server. Must run before
+        // the first activation below (activate-on-launch).
+        [KYAActivityLogger.sharedLogger closeDanglingEntriesWithReason:KYAActivityLogEndedReasonAppTerminated];
 
         [self configureStatusItemController];
         [self configureSleepWakeTimer];
@@ -98,13 +121,17 @@
                    selector:@selector(batteryCapacityThresholdDidChange:)
                        name:kKYABatteryCapacityThresholdDidChangeNotification
                      object:nil];
+        [center addObserver:self
+                   selector:@selector(applicationWillTerminate:)
+                       name:NSApplicationWillTerminateNotification
+                     object:nil];
         
         [self registerForWorkspaceSessionNotifications];
         [self registerForWiFiSSIDNotifications];
-        [self reconcileWatchedWiFiSSIDState];
+        [self reconcileWatchedWiFiSSIDTrigger];
         [self configureACPowerTrigger];
         [self registerForWatchedApplicationNotifications];
-        [self reconcileWatchedApplicationState];
+        [self reconcileWatchedApplicationTrigger];
 
         [self reconcileScheduleTrigger];
         [self reconcileDownloadActivityTrigger];
@@ -128,6 +155,7 @@
     [center removeObserver:self name:NSApplicationDidFinishLaunchingNotification object:nil];
     [center removeObserver:self name:NSApplicationDidChangeScreenParametersNotification object:nil];
     [center removeObserver:self name:kKYABatteryCapacityThresholdDidChangeNotification object:nil];
+    [center removeObserver:self name:NSApplicationWillTerminateNotification object:nil];
     [center removeObserver:self name:NSUserDefaultsDidChangeNotification object:NSUserDefaults.standardUserDefaults];
 
     [self unregisterFromWorkspaceSessionNotifications];
@@ -136,8 +164,19 @@
     [self teardownACPowerTrigger];
 }
 
+- (void)applicationWillTerminate:(NSNotification *)notification
+{
+    // The sleep-wake timer's completion runs asynchronously and never on
+    // quit, so close the open activity-log entry here — synchronously,
+    // since the process exits right after this notification. No-op when
+    // no session is open.
+    [KYAActivityLogger.sharedLogger recordActivationEndedSynchronouslyWithReason:KYAActivityLogEndedReasonAppTerminated];
+}
+
 - (void)userDefaultsDidChange:(NSNotification *)notification
 {
+    [self reconcileWatchedWiFiSSIDTrigger];
+    [self reconcileWatchedApplicationTrigger];
     [self reconcileACPowerTrigger];
     [self reconcileScheduleTrigger];
     [self reconcileDownloadActivityTrigger];
@@ -156,6 +195,8 @@
     {
         [self.cpuLoadMonitor stop];
         self.cpuLoadMonitor = nil;
+        // Nothing can end a CPU-load session once the monitor is gone.
+        [self terminateTimerIfOwnedBySource:KYAActivationSourceCPULoad];
         return;
     }
 
@@ -196,6 +237,7 @@
     {
         [self.audioOutputMonitor stop];
         self.audioOutputMonitor = nil;
+        [self terminateTimerIfOwnedBySource:KYAActivationSourceAudioOutput];
         return;
     }
 
@@ -237,6 +279,7 @@
     {
         [self.scheduleMonitor stop];
         self.scheduleMonitor = nil;
+        [self terminateTimerIfOwnedBySource:KYAActivationSourceSchedule];
         return;
     }
 
@@ -278,6 +321,7 @@
     {
         [self.downloadActivityMonitor stop];
         self.downloadActivityMonitor = nil;
+        [self terminateTimerIfOwnedBySource:KYAActivationSourceDownload];
         return;
     }
 
@@ -320,6 +364,7 @@
     else if(!enabled && active)
     {
         [self teardownACPowerTrigger];
+        [self terminateTimerIfOwnedBySource:KYAActivationSourceACPower];
     }
 }
 
@@ -378,9 +423,30 @@
         return;
     }
 
+    // Replacing a running session: end it properly first. Scheduling over
+    // it would orphan its caffeinate task and leave its log entry open.
+    if([self.sleepWakeTimer isScheduled])
+    {
+        [self.ownership terminate];
+        [self terminateTimerWithReason:KYAActivityLogEndedReasonUserCancelled];
+    }
+
     Auto defaults = NSUserDefaults.standardUserDefaults;
 
+    self.sessionGeneration += 1;
+    NSUInteger generation = self.sessionGeneration;
+    AutoWeak weakSelf = self;
     Auto timerCompletion = ^(BOOL cancelled) {
+        Auto strongSelf = weakSelf;
+        // Runs asynchronously on the main queue. When this session was
+        // replaced (URL scheme, AppleScript, CLI, MCP or Shortcuts
+        // "activate" while active), a newer session has started since:
+        // ending this one must not tear down the newer one's side effects,
+        // post "deactivated", log an expiry or quit the app.
+        if(strongSelf == nil || generation != strongSelf.sessionGeneration) { return; }
+
+        [strongSelf tearDownSessionSideEffects];
+
         // Post deactivation notification
         if(@available(macOS 11.0, *))
         {
@@ -455,6 +521,16 @@
 /// session that happened to be running at the same time.
 - (void)terminateTimerIfOwnedBySource:(KYAActivationSource)source
 {
+    // The trigger ended while its session was suspended for fast user
+    // switching: don't resume it when the session becomes active again.
+    if(source != KYAActivationSourceUser
+       && self.workspaceScheduledTimeInterval >= 0
+       && self.workspaceScheduledSource == source)
+    {
+        self.workspaceScheduledTimeInterval = -1;
+        self.workspaceScheduledSource = KYAActivationSourceUser;
+    }
+
     if([self.sleepWakeTimer isScheduled] == NO) { return; }
     // -terminateIfOwnedBySource: atomically checks the invariant and
     // clears ownership when it matches. -terminateTimerWithReason:
@@ -714,8 +790,10 @@
     Auto defaults = NSUserDefaults.standardUserDefaults;
     if([defaults kya_isDeactivateOnUserSwitchEnabled] && self.workspaceScheduledTimeInterval >= 0)
     {
-        [self activateTimerWithTimeInterval:self.workspaceScheduledTimeInterval];
+        [self activateTimerWithTimeInterval:self.workspaceScheduledTimeInterval
+                                     source:self.workspaceScheduledSource];
         self.workspaceScheduledTimeInterval = -1;
+        self.workspaceScheduledSource = KYAActivationSourceUser;
     }
 }
 
@@ -725,6 +803,7 @@
     if([defaults kya_isDeactivateOnUserSwitchEnabled] && [self.sleepWakeTimer isScheduled])
     {
         self.workspaceScheduledTimeInterval = self.sleepWakeTimer.scheduledTimeInterval;
+        self.workspaceScheduledSource = self.ownership.isActive ? self.ownership.source : KYAActivationSourceUser;
         [self terminateTimer];
     }
 }
@@ -733,13 +812,9 @@
 
 - (void)registerForWiFiSSIDNotifications
 {
+    // Monitoring itself is started / stopped by
+    // -reconcileWatchedWiFiSSIDTrigger as the watched list changes.
     Auto monitor = KYAWiFiMonitor.sharedMonitor;
-    Auto defaults = NSUserDefaults.standardUserDefaults;
-    if(defaults.kya_watchedWiFiSSIDs.count > 0)
-    {
-        [monitor startMonitoring];
-    }
-
     Auto center = NSNotificationCenter.defaultCenter;
     [center addObserver:self
                selector:@selector(watchedWiFiSSIDDidChange:)
@@ -756,21 +831,85 @@
     [KYAWiFiMonitor.sharedMonitor stopMonitoring];
 }
 
-- (void)reconcileWatchedWiFiSSIDState
+/// Starts / stops Wi-Fi monitoring for the watched-SSID list and
+/// re-evaluates the trigger, at launch and whenever the list changes
+/// (Watched Items settings). Unrelated defaults changes are ignored so
+/// they can't restart a session the user just ended.
+- (void)reconcileWatchedWiFiSSIDTrigger
 {
     Auto ssids = NSUserDefaults.standardUserDefaults.kya_watchedWiFiSSIDs;
-    if(ssids.count == 0) { return; }
-    if([KYAWiFiMonitor.sharedMonitor isJoinedNetworkAmongSSIDs:ssids] == NO) { return; }
-    // Don't disturb a session that's already running — whoever owns it
-    // (the user with a manual duration, kya_isActivatedOnLaunch, the
-    // watched-app trigger, etc.) made the choice they wanted. We only
-    // start one when the timer is idle.
-    if([self.sleepWakeTimer isScheduled]) { return; }
-    [self activateTimerWithTimeInterval:KYASleepWakeTimeIntervalIndefinite
-                                 source:KYAActivationSourceWatchedSSID];
+    Auto previous = self.reconciledWatchedSSIDs;
+    if(self.hasReconciledWatchedSSIDs && (ssids == previous || [ssids isEqualToArray:previous]))
+    {
+        return;
+    }
+    self.hasReconciledWatchedSSIDs = YES;
+    self.reconciledWatchedSSIDs = ssids;
+
+    Auto monitor = KYAWiFiMonitor.sharedMonitor;
+    if(ssids.count == 0)
+    {
+        [monitor stopMonitoring];
+        [self terminateTimerIfOwnedBySource:KYAActivationSourceWatchedSSID];
+        return;
+    }
+
+    [self requestLocationAuthorizationIfNeeded];
+    [monitor startMonitoring];
+    [self watchedWiFiSSIDDidChange:nil];
 }
 
-- (void)watchedWiFiSSIDDidChange:(NSNotification *)notification
+/// macOS 14+ only exposes the SSID to apps with Location authorization.
+- (void)requestLocationAuthorizationIfNeeded
+{
+    if(@available(macOS 10.15, *))
+    {
+        if(self.locationManager == nil)
+        {
+            // The delegate is told the current status right after
+            // creation and on every change; see -locationManagerDidChangeAuthorization:.
+            Auto manager = [CLLocationManager new];
+            manager.delegate = self;
+            self.locationManager = manager;
+        }
+        CLAuthorizationStatus status;
+        if(@available(macOS 11.0, *))
+        {
+            status = self.locationManager.authorizationStatus;
+        }
+        else
+        {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            status = [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+        }
+        if(status == kCLAuthorizationStatusNotDetermined)
+        {
+            [self.locationManager requestWhenInUseAuthorization];
+        }
+    }
+}
+
+#pragma mark - CLLocationManagerDelegate
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager
+{
+    // The SSID may have just become readable.
+    [self watchedWiFiSSIDDidChange:nil];
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
+- (void)locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status
+{
+    // macOS 10.15: -locationManagerDidChangeAuthorization: is macOS 11+.
+    if(@available(macOS 11.0, *)) { return; }
+    [self watchedWiFiSSIDDidChange:nil];
+}
+#pragma clang diagnostic pop
+
+- (void)watchedWiFiSSIDDidChange:(nullable NSNotification *)notification
 {
     Auto ssids = NSUserDefaults.standardUserDefaults.kya_watchedWiFiSSIDs;
     if(ssids.count == 0) { return; }
@@ -845,9 +984,27 @@
     return NO;
 }
 
-- (void)reconcileWatchedApplicationState
+/// Re-evaluates the watched-app trigger at launch and whenever the
+/// watched list changes: adding an app that is already running starts a
+/// session, removing the last running one ends the session it started.
+/// Unrelated defaults changes are ignored so they can't restart a session
+/// the user just ended.
+- (void)reconcileWatchedApplicationTrigger
 {
-    if([self isAnyWatchedApplicationRunning] == NO) { return; }
+    Auto watched = NSUserDefaults.standardUserDefaults.kya_watchedApplicationBundleIdentifiers;
+    Auto previous = self.reconciledWatchedBundleIdentifiers;
+    if(self.hasReconciledWatchedBundleIdentifiers && (watched == previous || [watched isEqualToArray:previous]))
+    {
+        return;
+    }
+    self.hasReconciledWatchedBundleIdentifiers = YES;
+    self.reconciledWatchedBundleIdentifiers = watched;
+
+    if([self isAnyWatchedApplicationRunning] == NO)
+    {
+        [self terminateTimerIfOwnedBySource:KYAActivationSourceWatchedApp];
+        return;
+    }
     if([self.sleepWakeTimer isScheduled]) { return; }
     [self activateTimerWithTimeInterval:KYASleepWakeTimeIntervalIndefinite
                                  source:KYAActivationSourceWatchedApp];
@@ -1055,7 +1212,12 @@
     [self startMouseJigglerIfEnabled];
 }
 
-- (void)sleepWakeTimerDidDeactivate:(KYASleepWakeTimer *)sleepWakeTimer
+// Session teardown lives in the per-session completion block (see
+// -activateTimerWithTimeInterval:source:) rather than in
+// -sleepWakeTimerDidDeactivate:, which is delivered asynchronously without
+// saying which session ended — after a replacement it would tear down the
+// newer session.
+- (void)tearDownSessionSideEffects
 {
     // Update the status item
     self.statusItemController.appearance = KYAStatusItemAppearanceInactive;

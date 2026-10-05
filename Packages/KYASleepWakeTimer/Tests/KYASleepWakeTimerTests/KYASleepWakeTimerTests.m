@@ -151,4 +151,52 @@
     XCTAssertEqual(delegate.lastWillActivateInterval, 300.0);
 }
 
+- (void)testEachSessionEndRunsThatSessionsCompletion
+{
+    // Forced terminations (invalidate) dispatch the completion
+    // deterministically, without waiting on caffeinate signals.
+    XCTestExpectation *first = [self expectationWithDescription:@"first session's completion"];
+    first.assertForOverFulfill = YES;
+    XCTestExpectation *second = [self expectationWithDescription:@"second session's completion"];
+    second.assertForOverFulfill = YES;
+
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {
+        XCTAssertTrue(cancelled);
+        [first fulfill];
+    }];
+    [self.timer invalidate];
+    // Replace the session before the main queue delivers the first end.
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {
+        XCTAssertTrue(cancelled);
+        [second fulfill];
+    }];
+    [self.timer invalidate];
+
+    [self waitForExpectations:@[first, second] timeout:2.0 enforceOrder:YES];
+}
+
+- (void)testCompletionRunsOnlyOncePerSession
+{
+    XCTestExpectation *completed = [self expectationWithDescription:@"completion"];
+    XCTestExpectation *secondCall = [self expectationWithDescription:@"no second completion"];
+    secondCall.inverted = YES;
+    __block NSInteger calls = 0;
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {
+        calls += 1;
+        if(calls == 1) { [completed fulfill]; } else { [secondCall fulfill]; }
+    }];
+    [self.timer invalidate];
+    // A second invalidate (app quit, dealloc) must not re-run it.
+    [self.timer invalidate];
+
+    [self waitForExpectations:@[completed, secondCall] timeout:0.5];
+}
+
+- (void)testInvalidateClearsCompletionBlock
+{
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {}];
+    [self.timer invalidate];
+    XCTAssertTrue(self.timer.completionBlock == nil);
+}
+
 @end
