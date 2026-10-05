@@ -103,6 +103,12 @@ def _no_container_log(tmp_path, monkeypatch):
     monkeypatch.setattr(kya, "CONTAINER_ACTIVITY_LOG_PATH", tmp_path / "no-container" / "activity.jsonl")
 
 
+@pytest.fixture(autouse=True)
+def _kya_running(monkeypatch):
+    """Pretend KYA is running; tests about a stopped app override this."""
+    monkeypatch.setattr(kya, "_kya_is_running", lambda: True)
+
+
 @pytest.fixture()
 def patched_log(tmp_path, monkeypatch):
     """Return a callable that installs a synthetic log and points kya at it."""
@@ -220,11 +226,18 @@ def test_current_status_picks_most_recent_open_entry(patched_log):
 _KYA_PY = str(Path(kya.__file__).resolve())
 
 
-def _run_status(tmp_home: Path, *args):
+def _run_status(tmp_home: Path, *args, kya_running: bool = True):
     # Copy the real environment and only override HOME so the child keeps
     # PATH / LANG / etc. — a bare {"HOME": ...} dict breaks in stripped envs.
     env = os.environ.copy()
     env["HOME"] = str(tmp_home)
+    # Fake `pgrep` so the result doesn't depend on KYA running on this host.
+    fake_bin = tmp_home / "fake-bin"
+    fake_bin.mkdir(exist_ok=True)
+    pgrep = fake_bin / "pgrep"
+    pgrep.write_text(f"#!/bin/sh\nexit {0 if kya_running else 1}\n", encoding="utf-8")
+    pgrep.chmod(0o755)
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
     return subprocess.run(
         [sys.executable, _KYA_PY, "status", *args],
         capture_output=True,
@@ -343,3 +356,23 @@ def test_status_subprocess_reads_sandbox_container_log(tmp_path):
     res = _run_status(tmp_path, "--json")
     assert res.returncode == 0
     assert json.loads(res.stdout)["source"] == "container"
+
+
+def test_current_status_inactive_when_kya_not_running(patched_log, monkeypatch):
+    # Crash/kill leaves the newest entry open until KYA relaunches and
+    # repairs it; meanwhile nothing keeps the Mac awake.
+    patched_log([{"startedAt": "2024-01-01T00:00:00Z", "source": "user"}])
+    monkeypatch.setattr(kya, "_kya_is_running", lambda: False)
+    assert kya._current_status() == {"active": False}
+
+
+def test_status_subprocess_open_entry_but_kya_not_running(tmp_path):
+    log_dir = tmp_path / "Library" / "Application Support" / "KeepingYouAwake"
+    log_dir.mkdir(parents=True)
+    (log_dir / "activity.jsonl").write_text(
+        json.dumps({"startedAt": "2024-01-01T00:00:00Z", "source": "test"}) + "\n",
+        encoding="utf-8",
+    )
+    res = _run_status(tmp_path, "--json", kya_running=False)
+    assert res.returncode == 1
+    assert json.loads(res.stdout) == {"active": False}
