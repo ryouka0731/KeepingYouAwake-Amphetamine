@@ -43,18 +43,22 @@ def test_build_numbers_increase_in_release_order():
     assert len(set(numbers)) == len(numbers)
 
 
-def test_build_number_matches_xcconfig_for_its_release():
-    xcconfig = (Path(__file__).resolve().parents[2] / "Configuration.xcconfig").read_text()
+def test_xcconfig_build_number_matches_latest_release():
+    """CURRENT_PROJECT_VERSION must be the build number the appcast
+    advertises for the newest release in CHANGELOG.md."""
+    import re
+
+    root = Path(__file__).resolve().parents[2]
+    xcconfig = (root / "Configuration.xcconfig").read_text()
     values = {
         key.strip(): value.strip()
         for key, value in (
             line.split("=", 1) for line in xcconfig.splitlines() if "=" in line and not line.lstrip().startswith("//")
         )
     }
-    marketing = values["MARKETING_VERSION"]
-    build = values["CURRENT_PROJECT_VERSION"]
-    major, minor, patch = (int(p) for p in marketing.split("."))
-    # The xcconfig's build must be what the generator derives for some
-    # amphetamine suffix of the same marketing version.
-    base = int(generate_appcast.build_number(major, minor, patch, 0))
-    assert 0 < int(build) - base < 100
+    latest = re.search(r"^### (v\d+\.\d+\.\d+-amphetamine\.\d+)\b", (root / "CHANGELOG.md").read_text(), re.M)
+    assert latest, "no released version heading in CHANGELOG.md"
+    tag = latest.group(1)
+
+    assert values["MARKETING_VERSION"] == generate_appcast.parse_short_version(tag).split("-")[0]
+    assert values["CURRENT_PROJECT_VERSION"] == generate_appcast.parse_build_number(tag, "")
