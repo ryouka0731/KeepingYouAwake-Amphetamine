@@ -6,11 +6,21 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-- **Drive Alive keeps external drives active**: besides the startup disk, it now rewrites a hidden `.KeepingYouAwake-DriveAlive` file at the root of every mounted external, local, writable volume every 30 s while a session runs, and removes it when the session ends.
-- Returning to your login session after fast user switching no longer starts an indefinite session when none was running before you switched away (upstream bug).
-- External audio output trigger: the Core Audio listener holds the monitor weakly, so a device change arriving while the trigger is being turned off can't touch freed memory.
-- Watched Items: an SSID row abandoned with Escape no longer lingers as an empty row.
-- Appcast build numbers are now `major·1000000 + minor·10000 + patch·100 + amphetamine suffix`, which keeps update ordering correct past `amphetamine.9` and across patch releases (unchanged for every release so far).
+(no changes since v1.7.0-amphetamine.6 — add new entries here.)
+
+### v1.7.0-amphetamine.6 (2026-10-06)
+
+#### Fixes
+- **Drive Alive keeps external drives active** — besides the startup disk, it rewrites a hidden `.KeepingYouAwake-DriveAlive` file at the root of every mounted external, local, writable volume every 30 s while a session runs, and removes it when the session ends. Existing files, directories and symlinks with that name are never overwritten or removed. Resolves the v1.7.0-amphetamine.5 known issue. [#104](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/104)
+- Returning to your login session after fast user switching no longer starts an indefinite session when none was running before you switched away (upstream bug). [#105](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/105)
+- External audio output trigger: the Core Audio listener holds the monitor weakly, so a device change arriving while the trigger is being turned off can't touch freed memory. [#105](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/105)
+- Watched Items: an SSID row abandoned with Escape no longer lingers as an empty row. [#105](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/105)
+
+#### Release tooling
+- Appcast build numbers are `major·1000000 + minor·10000 + patch·100 + amphetamine suffix`, keeping update order correct past `amphetamine.9` and across patch releases (unchanged for every release so far); out-of-range components fail the appcast workflow instead of colliding. [#105](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/105)
+
+#### Known issues
+- In sandboxed (Xcode-signed) builds, Drive Alive and the download trigger can't reach external volumes or user-picked folders. Released builds are unaffected.
 
 ### v1.7.0-amphetamine.5 (2026-10-06)
 
