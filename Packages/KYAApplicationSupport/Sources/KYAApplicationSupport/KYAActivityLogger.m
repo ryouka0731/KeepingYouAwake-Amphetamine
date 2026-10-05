@@ -299,6 +299,18 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
     {
         [self closeDanglingDictionaries:dicts endedAt:entry.startedAt reason:pendingRepairReason];
     }
+    // A session still open here ended without being recorded: its
+    // caffeinate exited at the fire date and a new session started before
+    // the main queue delivered the expiry. Close it as expired so it isn't
+    // orphaned (the late expiry then sees a newer session and skips).
+    NSInteger openLine = self.openEntryLineNumber;
+    if(openLine >= 0 && (NSUInteger)openLine < dicts.count && dicts[(NSUInteger)openLine][@"endedAt"] == nil)
+    {
+        NSMutableDictionary *open = [dicts[(NSUInteger)openLine] mutableCopy];
+        open[@"endedAt"] = [[NSISO8601DateFormatter new] stringFromDate:entry.startedAt];
+        open[@"endedReason"] = KYAActivityLogEndedReasonExpired;
+        dicts[(NSUInteger)openLine] = [open copy];
+    }
     [dicts addObject:[entry dictionaryRepresentation]];
 
     // Soft cap: drop oldest entries first.
