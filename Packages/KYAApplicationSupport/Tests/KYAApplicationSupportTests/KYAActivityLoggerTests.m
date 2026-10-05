@@ -224,4 +224,36 @@
     XCTAssertEqualObjects(entries[0].endedReason, KYAActivityLogEndedReasonUserCancelled);
 }
 
+- (void)testFailedDanglingRepairIsRetriedOnNextAppend
+{
+    [self.logger recordActivationStartedFromSource:KYAActivityLogSourceUser
+                                  requestedDuration:-1];
+    [self flush];
+
+    // Make the repair's atomic write fail: a read-only parent directory
+    // blocks creating the temporary file.
+    NSURL *dir = self.tmpFile.URLByDeletingLastPathComponent;
+    NSString *isolated = [NSString stringWithFormat:@"kya-ro-%@", [NSUUID UUID].UUIDString];
+    NSURL *roDir = [dir URLByAppendingPathComponent:isolated isDirectory:YES];
+    Auto fm = NSFileManager.defaultManager;
+    XCTAssertTrue([fm createDirectoryAtURL:roDir withIntermediateDirectories:YES attributes:nil error:nil]);
+    NSURL *roFile = [roDir URLByAppendingPathComponent:@"activity.jsonl"];
+    XCTAssertTrue([fm copyItemAtURL:self.tmpFile toURL:roFile error:nil]);
+    XCTAssertTrue([fm setAttributes:@{NSFilePosixPermissions: @0555} ofItemAtPath:roDir.path error:nil]);
+
+    Auto relaunched = [[KYAActivityLogger alloc] initWithFileURL:roFile maximumEntries:5];
+    [relaunched closeDanglingEntriesWithReason:KYAActivityLogEndedReasonAppTerminated];
+    XCTAssertNil([relaunched recentEntriesWithLimit:1].firstObject.endedAt, @"write failed, still open on disk");
+
+    // Writable again: the next session's append also persists the repair.
+    XCTAssertTrue([fm setAttributes:@{NSFilePosixPermissions: @0755} ofItemAtPath:roDir.path error:nil]);
+    [relaunched recordActivationStartedFromSource:KYAActivityLogSourceUser requestedDuration:-1];
+
+    Auto entries = [relaunched recentEntriesWithLimit:10];
+    XCTAssertEqual(entries.count, 2);
+    XCTAssertNil(entries[0].endedAt, @"the new session is open");
+    XCTAssertEqualObjects(entries[1].endedReason, KYAActivityLogEndedReasonAppTerminated);
+    [fm removeItemAtURL:roDir error:nil];
+}
+
 @end
