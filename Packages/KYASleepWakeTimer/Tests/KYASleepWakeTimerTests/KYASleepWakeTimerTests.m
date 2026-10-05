@@ -178,18 +178,19 @@
 - (void)testCompletionRunsOnlyOncePerSession
 {
     XCTestExpectation *completed = [self expectationWithDescription:@"completion"];
-    completed.assertForOverFulfill = YES;
+    XCTestExpectation *secondCall = [self expectationWithDescription:@"no second completion"];
+    secondCall.inverted = YES;
+    __block NSInteger calls = 0;
     [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {
-        [completed fulfill];
+        calls += 1;
+        if(calls == 1) { [completed fulfill]; } else { [secondCall fulfill]; }
     }];
     [self.timer invalidate];
     // A second invalidate (app quit, dealloc) must not re-run it.
     [self.timer invalidate];
     XCTAssertNil(self.timer.completionBlock);
 
-    [self waitForExpectations:@[completed] timeout:2.0];
-    // Drain the main queue so a stray second delivery would over-fulfill.
-    [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
+    [self waitForExpectations:@[completed, secondCall] timeout:0.5];
 }
 
 @end
