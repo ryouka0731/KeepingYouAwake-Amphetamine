@@ -7,6 +7,10 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 ### Unreleased
 
 - **Drive Alive keeps external drives active**: besides the startup disk, it now rewrites a hidden `.KeepingYouAwake-DriveAlive` file at the root of every mounted external, local, writable volume every 30 s while a session runs, and removes it when the session ends.
+- Returning to your login session after fast user switching no longer starts an indefinite session when none was running before you switched away (upstream bug).
+- External audio output trigger: the Core Audio listener holds the monitor weakly, so a device change arriving while the trigger is being turned off can't touch freed memory.
+- Watched Items: an SSID row abandoned with Escape no longer lingers as an empty row.
+- Appcast build numbers are now `major·1000000 + minor·10000 + patch·100 + amphetamine suffix`, which keeps update ordering correct past `amphetamine.9` and across patch releases (unchanged for every release so far).
 
 ### v1.7.0-amphetamine.5 (2026-10-06)
 

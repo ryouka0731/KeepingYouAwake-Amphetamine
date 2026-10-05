@@ -10,12 +10,15 @@
 @interface KYAAudioOutputMonitor ()
 @property (nonatomic, readwrite, getter=isRunning) BOOL running;
 @property (nonatomic, readwrite) BOOL hasExternalAudioOutput;
+/// The registered listener; removing it needs the same block.
+@property (nonatomic, nullable) AudioObjectPropertyListenerBlock listenerBlock;
 @end
 
-static OSStatus KYAAudioOutputMonitorPropertyCallback(AudioObjectID inObjectID,
-                                                      UInt32 inNumberAddresses,
-                                                      const AudioObjectPropertyAddress *inAddresses,
-                                                      void *inClientData);
+static const AudioObjectPropertyAddress KYADefaultOutputDeviceAddress = {
+    .mSelector = kAudioHardwarePropertyDefaultOutputDevice,
+    .mScope    = kAudioObjectPropertyScopeGlobal,
+    .mElement  = kAudioObjectPropertyElementMain,
+};
 
 @implementation KYAAudioOutputMonitor
 
@@ -31,38 +34,52 @@ static OSStatus KYAAudioOutputMonitorPropertyCallback(AudioObjectID inObjectID,
     if(self.running) { return; }
     self.running = YES;
 
-    AudioObjectPropertyAddress address = {
-        .mSelector = kAudioHardwarePropertyDefaultOutputDevice,
-        .mScope    = kAudioObjectPropertyScopeGlobal,
-        .mElement  = kAudioObjectPropertyElementMain,
+    // A listener whose removal failed is still registered and still calls
+    // -refresh; reuse it rather than adding a second one.
+    if(self.listenerBlock != nil)
+    {
+        [self refresh];
+        return;
+    }
+
+    // Delivered on the main queue (delegate calls drive AppKit code). The
+    // block holds the monitor weakly: a change that arrives while the
+    // monitor is being released can't reach freed memory, which the old
+    // C callback with an unretained clientData pointer could.
+    AutoWeak weakSelf = self;
+    AudioObjectPropertyListenerBlock listener = ^(UInt32 inNumberAddresses,
+                                                  const AudioObjectPropertyAddress *inAddresses) {
+        [weakSelf refresh];
     };
-    OSStatus status = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
-                                                     &address,
-                                                     &KYAAudioOutputMonitorPropertyCallback,
-                                                     (__bridge void *)self);
+    OSStatus status = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject,
+                                                          &KYADefaultOutputDeviceAddress,
+                                                          dispatch_get_main_queue(),
+                                                          listener);
     if(status != noErr)
     {
         // Listener registration failed — fall back to "running" but
         // never auto-fire. Refresh-on-demand still works.
         return;
     }
+    self.listenerBlock = listener;
     [self refresh];
 }
 
 - (void)stop
 {
-    if(!self.running) { return; }
     self.running = NO;
 
-    AudioObjectPropertyAddress address = {
-        .mSelector = kAudioHardwarePropertyDefaultOutputDevice,
-        .mScope    = kAudioObjectPropertyScopeGlobal,
-        .mElement  = kAudioObjectPropertyElementMain,
-    };
-    AudioObjectRemovePropertyListener(kAudioObjectSystemObject,
-                                      &address,
-                                      &KYAAudioOutputMonitorPropertyCallback,
-                                      (__bridge void *)self);
+    AudioObjectPropertyListenerBlock listener = self.listenerBlock;
+    if(listener == nil) { return; }
+    // Keep the block if removal fails, so a later -stop can retry and
+    // -start doesn't register a second listener next to it.
+    if(AudioObjectRemovePropertyListenerBlock(kAudioObjectSystemObject,
+                                              &KYADefaultOutputDeviceAddress,
+                                              dispatch_get_main_queue(),
+                                              listener) == noErr)
+    {
+        self.listenerBlock = nil;
+    }
 }
 
 #pragma mark - Public API
@@ -135,21 +152,3 @@ static OSStatus KYAAudioOutputMonitorPropertyCallback(AudioObjectID inObjectID,
 }
 
 @end
-
-#pragma mark - Core Audio listener callback
-
-static OSStatus KYAAudioOutputMonitorPropertyCallback(AudioObjectID inObjectID,
-                                                      UInt32 inNumberAddresses,
-                                                      const AudioObjectPropertyAddress *inAddresses,
-                                                      void *inClientData)
-{
-    (void)inObjectID;
-    (void)inNumberAddresses;
-    (void)inAddresses;
-    KYAAudioOutputMonitor *monitor = (__bridge KYAAudioOutputMonitor *)inClientData;
-    // Hop to the main queue: delegate calls drive AppKit code paths.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [monitor refresh];
-    });
-    return noErr;
-}

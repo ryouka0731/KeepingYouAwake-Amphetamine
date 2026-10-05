@@ -403,7 +403,11 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     switch(kind)
     {
         case KYAWatchedItemsListKindWiFiSSIDs:
-            defaults.kya_watchedWiFiSSIDs = (self.ssids.count > 0) ? [self.ssids copy] : nil;
+        {
+            // Never persist an in-progress placeholder row.
+            NSArray<NSString *> *ssids = [self.ssids filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]];
+            defaults.kya_watchedWiFiSSIDs = (ssids.count > 0) ? ssids : nil;
+        }
             break;
         case KYAWatchedItemsListKindApplications:
             defaults.kya_watchedApplicationBundleIdentifiers = (self.bundleIdentifiers.count > 0) ? [self.bundleIdentifiers copy] : nil;
@@ -510,12 +514,52 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     // Append a placeholder row and immediately begin editing it. The value
     // is committed (trimmed / deduped / dropped-if-empty) when the cell-based
     // table calls -tableView:setObjectValue:forTableColumn:row: on edit end.
+    // Escape aborts editing without that call, so drop any placeholder an
+    // earlier add left behind first.
+    [self removeEmptySSIDPlaceholders];
     [self.ssids addObject:@""];
     [self.ssidTableView reloadData];
     Auto row = (NSInteger)(self.ssids.count - 1);
     [self.ssidTableView scrollRowToVisible:row];
     [self.ssidTableView editColumn:0 row:row withEvent:nil select:YES];
     [self updateRemoveButtonsEnabledState];
+}
+
+/// Removes placeholder rows whose editing was aborted (Escape). They are
+/// never persisted, but would otherwise linger as empty rows.
+- (void)removeEmptySSIDPlaceholders
+{
+    NSIndexSet *empty = [self.ssids indexesOfObjectsPassingTest:^BOOL(NSString *ssid, NSUInteger index, BOOL *stop) {
+        return ssid.length == 0;
+    }];
+    if(empty.count == 0) { return; }
+    [self.ssids removeObjectsAtIndexes:empty];
+    [self.ssidTableView reloadData];
+    [self updateRemoveButtonsEnabledState];
+}
+
+- (void)controlTextDidEndEditing:(NSNotification *)notification
+{
+    if(notification.object != self.ssidTableView) { return; }
+    // Also posted when Escape cancels editing, which commits nothing. Run
+    // after the table has applied a committed value, so only a row that
+    // is still empty is dropped — unless a new row is being edited by
+    // then (e.g. "+" clicked right away): its placeholder must stay, and
+    // its own end of editing cleans up.
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if(strongSelf == nil || strongSelf.ssidTableView.editedRow >= 0) { return; }
+        [strongSelf removeEmptySSIDPlaceholders];
+    });
+}
+
+- (void)viewWillDisappear
+{
+    [super viewWillDisappear];
+    // Commit or drop an edit in progress, then clear leftover placeholders.
+    [self.view.window makeFirstResponder:nil];
+    [self removeEmptySSIDPlaceholders];
 }
 
 - (void)removeSelectedItemForKind:(KYAWatchedItemsListKind)kind

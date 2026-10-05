@@ -14,13 +14,14 @@
 #import <KYAApplicationSupport/KYAApplicationSupport.h>
 #import <Sparkle/Sparkle.h>
 
-// Fork-controlled appcast URLs. The endpoints don't exist yet — they
-// will be populated when issue #54 (in-app auto-update via fork-hosted
-// Sparkle appcast) lands. Until then Sparkle silently fails its update
-// check, which is the safe default; the alternative — pointing back at
-// upstream's `newmarcel.github.io/KeepingYouAwake/...` feeds — would
-// pull upstream's binary into a fork bundle and violate the upstream
-// maintainer's "don't redistribute under same name and icon" request.
+// Fork-controlled appcast URLs, published to gh-pages by appcast.yml after
+// each release (#54). Only the release feed is generated; the pre-release
+// feed URL isn't published yet, so a pre-release update check fails to
+// fetch a feed (and installs nothing).
+// Pointing back at upstream's `newmarcel.github.io/KeepingYouAwake/...`
+// feeds instead would pull upstream's binary into a fork bundle and
+// violate the upstream maintainer's "don't redistribute under same name
+// and icon" request.
 static NSString * const KYAAppUpdaterReleaseFeedURLString = @"https://ryouka0731.github.io/KeepingYouAwake-Amphetamine/appcast.xml";
 static NSString * const KYAAppUpdaterPreReleaseFeedURLString = @"https://ryouka0731.github.io/KeepingYouAwake-Amphetamine/prerelease-appcast.xml";
 
