@@ -520,8 +520,25 @@ jobs:
           PING="$(getconf DARWIN_USER_TEMP_DIR)info.marcel-dierkes.KeepingYouAwake.drive-alive.${KYA_PID}"
           open "keepingyouawake:///activate?seconds=60"
           sleep 3
+          LINES_BEFORE="$(wc -l < "$LOG" | tr -d ' ')"
           open "keepingyouawake:///activate?seconds=60"
-          sleep 3
+          # Wait until the replacement is logged (old entry closed, new one
+          # appended) so the checks below can't pass on the first session.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if [ "$(wc -l < "$LOG" | tr -d ' ')" -gt "$LINES_BEFORE" ]; then break; fi
+            sleep 1
+          done
+          if [ "$(wc -l < "$LOG" | tr -d ' ')" -le "$LINES_BEFORE" ]; then
+            echo "::error::Second activate was never logged"
+            exit 1
+          fi
+          if ! tail -n 2 "$LOG" | head -n 1 | jq -e '.endedReason == "user-cancelled"' >/dev/null; then
+            echo "::error::Replaced session was not closed as user-cancelled:"
+            tail -n 2 "$LOG"
+            exit 1
+          fi
+          # Let the replaced session's queued callbacks run.
+          sleep 2
           if ! pgrep -f "caffeinate.*-di" >/dev/null; then
             echo "::error::caffeinate not running after re-activate"
             exit 1
