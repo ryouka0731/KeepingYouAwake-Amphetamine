@@ -173,4 +173,55 @@
     XCTAssertNil(entry.endedReason);
 }
 
+#pragma mark - App termination / dangling entries
+
+- (void)testSynchronousEndClosesOpenEntryWithoutFlush
+{
+    [self.logger recordActivationStartedFromSource:KYAActivityLogSourceACPower
+                                  requestedDuration:-1];
+    [self.logger recordActivationEndedSynchronouslyWithReason:KYAActivityLogEndedReasonAppTerminated];
+
+    // Read through a fresh logger: the write must already be on disk.
+    Auto reader = [[KYAActivityLogger alloc] initWithFileURL:self.tmpFile maximumEntries:5];
+    Auto entry = [reader recentEntriesWithLimit:1].firstObject;
+    XCTAssertNotNil(entry.endedAt);
+    XCTAssertEqualObjects(entry.endedReason, KYAActivityLogEndedReasonAppTerminated);
+}
+
+- (void)testCloseDanglingEntriesClosesEntriesLeftOpenByPreviousProcess
+{
+    // A previous process opened a session and died without closing it.
+    [self.logger recordActivationStartedFromSource:KYAActivityLogSourceUser
+                                  requestedDuration:-1];
+    [self flush];
+
+    Auto relaunched = [[KYAActivityLogger alloc] initWithFileURL:self.tmpFile maximumEntries:5];
+    [relaunched closeDanglingEntriesWithReason:KYAActivityLogEndedReasonAppTerminated];
+
+    Auto entries = [relaunched recentEntriesWithLimit:10];
+    XCTAssertEqual(entries.count, 1);
+    XCTAssertNotNil(entries.firstObject.endedAt);
+    XCTAssertEqualObjects(entries.firstObject.endedReason, KYAActivityLogEndedReasonAppTerminated);
+}
+
+- (void)testCloseDanglingEntriesKeepsClosedEntriesAndNewSessionsWork
+{
+    [self.logger recordActivationStartedFromSource:KYAActivityLogSourceUser
+                                  requestedDuration:60];
+    [self.logger recordActivationEndedWithReason:KYAActivityLogEndedReasonExpired];
+    [self flush];
+
+    Auto relaunched = [[KYAActivityLogger alloc] initWithFileURL:self.tmpFile maximumEntries:5];
+    [relaunched closeDanglingEntriesWithReason:KYAActivityLogEndedReasonAppTerminated];
+    [relaunched recordActivationStartedFromSource:KYAActivityLogSourceUser
+                               requestedDuration:-1];
+    [relaunched recordActivationEnded];
+
+    Auto entries = [relaunched recentEntriesWithLimit:10];
+    XCTAssertEqual(entries.count, 2);
+    XCTAssertEqualObjects(entries[1].endedReason, KYAActivityLogEndedReasonExpired,
+                          @"an already-closed entry keeps its reason");
+    XCTAssertEqualObjects(entries[0].endedReason, KYAActivityLogEndedReasonUserCancelled);
+}
+
 @end
