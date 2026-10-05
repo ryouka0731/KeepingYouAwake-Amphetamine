@@ -58,6 +58,12 @@ def _no_container_log(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "CONTAINER_ACTIVITY_LOG_PATH", tmp_path / "no-container" / "activity.jsonl")
 
 
+@pytest.fixture(autouse=True)
+def _kya_running(monkeypatch):
+    """Pretend KYA is running; tests about a stopped app override this."""
+    monkeypatch.setattr(srv, "_kya_is_running", lambda: True)
+
+
 @pytest.fixture()
 def patched_log(tmp_path, monkeypatch):
     def _install(lines):
@@ -349,3 +355,9 @@ def test_activity_log_path_prefers_most_recently_written(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "ACTIVITY_LOG_PATH", home_log)
     monkeypatch.setattr(srv, "CONTAINER_ACTIVITY_LOG_PATH", container_log)
     assert srv._activity_log_path() == container_log
+
+
+def test_current_status_inactive_when_kya_not_running(patched_log, monkeypatch):
+    patched_log([{"startedAt": "2024-01-01T00:00:00Z", "source": "user"}])
+    monkeypatch.setattr(srv, "_kya_is_running", lambda: False)
+    assert srv._current_status() == {"active": False}
