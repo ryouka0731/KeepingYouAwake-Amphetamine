@@ -126,6 +126,9 @@ static void KYAScriptingPostURL(NSString *url)
 /// asynchronously, so a read that lands between dispatch and the
 /// action would otherwise re-cache the pre-command state for a full TTL.
 @property (nonatomic) NSTimeInterval cacheBypassUntil;
+/// Test overrides; nil means the shared logger / this process's launch date.
+@property (nonatomic, nullable) KYAActivityLogger *activityLoggerOverride;
+@property (nonatomic, nullable) NSDate *launchDateOverride;
 @end
 
 @implementation KYAScriptingProxy
@@ -155,7 +158,8 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
         return self.cachedOpenEntry;
     }
 
-    Auto entries = [KYAActivityLogger.sharedLogger recentEntriesWithLimit:50];
+    KYAActivityLogger *logger = self.activityLoggerOverride ?: KYAActivityLogger.sharedLogger;
+    Auto entries = [logger recentEntriesWithLimit:50];
     // The activity log holds at most one open entry at a time (entry
     // is opened on activateTimer:, closed on terminateTimer / natural
     // expiration). So the open entry, if any, is necessarily the
@@ -165,7 +169,7 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
     // session, its open entry survives in the JSONL. After a restart
     // we'd happily call that "active" — false. Only trust an open
     // entry if it was started AFTER the current process launched.
-    NSDate *launchDate = NSRunningApplication.currentApplication.launchDate;
+    NSDate *launchDate = self.launchDateOverride ?: NSRunningApplication.currentApplication.launchDate;
 
     KYAActivityLogEntry *found = nil;
     for(KYAActivityLogEntry *entry in entries)
@@ -233,6 +237,25 @@ static const NSTimeInterval KYAScriptingProxyCacheTTL = 1.0;
     // be treated as stale. Compare at whole-second precision instead.
     NSTimeInterval launchSecond = floor(launchDate.timeIntervalSinceReferenceDate);
     return startedAt.timeIntervalSinceReferenceDate >= launchSecond;
+}
+
+- (void)kya_setActivityLoggerForTesting:(nullable KYAActivityLogger *)logger
+{
+    self.activityLoggerOverride = logger;
+}
+
+- (void)kya_setLaunchDateForTesting:(nullable NSDate *)launchDate
+{
+    self.launchDateOverride = launchDate;
+}
+
+- (void)kya_resetForTesting
+{
+    self.activityLoggerOverride = nil;
+    self.launchDateOverride = nil;
+    self.cachedOpenEntry = nil;
+    self.cacheStampedAt = 0;
+    self.cacheBypassUntil = 0;
 }
 
 + (void)kya_setURLDispatcherForTesting:(KYAScriptingURLDispatcher _Nullable)dispatcher
