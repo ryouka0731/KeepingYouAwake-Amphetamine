@@ -10,6 +10,8 @@
 
 #import <Cocoa/Cocoa.h>
 
+@class KYAActivityLogger;
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface KYAActivateScriptCommand : NSScriptCommand
@@ -49,6 +51,18 @@ typedef void (^KYAScriptingURLDispatcher)(NSURL *url);
 /// the comparison is done at that precision. A nil `launchDate` trusts
 /// every entry.
 + (BOOL)kya_isEntryStartedAt:(NSDate *)startedAt fromLaunchAt:(nullable NSDate *)launchDate;
+
+/// Read state from `logger` instead of the shared activity logger.
+/// Pass nil to restore the default.
+- (void)kya_setActivityLoggerForTesting:(nullable KYAActivityLogger *)logger;
+
+/// Use `launchDate` for the stale-entry guard instead of this process's
+/// launch date. Pass nil to restore the default.
+- (void)kya_setLaunchDateForTesting:(nullable NSDate *)launchDate;
+
+/// Clear test overrides and the open-entry cache. Tests MUST call this
+/// in `tearDown` since the proxy is a singleton.
+- (void)kya_resetForTesting;
 @end
 
 NS_ASSUME_NONNULL_END
