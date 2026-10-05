@@ -173,8 +173,23 @@
     [self.timer invalidate];
 
     [self waitForExpectations:@[first, second] timeout:2.0 enforceOrder:YES];
-    // -tearDown's -invalidate would run the completion again.
-    self.timer.completionBlock = nil;
+}
+
+- (void)testCompletionRunsOnlyOncePerSession
+{
+    XCTestExpectation *completed = [self expectationWithDescription:@"completion"];
+    completed.assertForOverFulfill = YES;
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {
+        [completed fulfill];
+    }];
+    [self.timer invalidate];
+    // A second invalidate (app quit, dealloc) must not re-run it.
+    [self.timer invalidate];
+    XCTAssertNil(self.timer.completionBlock);
+
+    [self waitForExpectations:@[completed] timeout:2.0];
+    // Drain the main queue so a stray second delivery would over-fulfill.
+    [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
 }
 
 @end
