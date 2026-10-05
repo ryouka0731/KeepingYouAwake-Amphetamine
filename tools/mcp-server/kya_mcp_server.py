@@ -47,8 +47,8 @@ except ImportError as e:
     print(
         "kya-mcp-server requires the 'mcp' Python package.\n"
         "Install it with one of:\n"
-        "    uv pip install mcp\n"
-        "    pip install mcp\n"
+        "    uv pip install 'mcp>=1.0.0,<2'\n"
+        "    pip install 'mcp>=1.0.0,<2'\n"
         f"\nUnderlying import error: {e}",
         file=sys.stderr,
     )
