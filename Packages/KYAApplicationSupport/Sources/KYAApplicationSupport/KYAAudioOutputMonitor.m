@@ -34,6 +34,14 @@ static const AudioObjectPropertyAddress KYADefaultOutputDeviceAddress = {
     if(self.running) { return; }
     self.running = YES;
 
+    // A listener whose removal failed is still registered and still calls
+    // -refresh; reuse it rather than adding a second one.
+    if(self.listenerBlock != nil)
+    {
+        [self refresh];
+        return;
+    }
+
     // Delivered on the main queue (delegate calls drive AppKit code). The
     // block holds the monitor weakly: a change that arrives while the
     // monitor is being released can't reach freed memory, which the old
@@ -59,16 +67,19 @@ static const AudioObjectPropertyAddress KYADefaultOutputDeviceAddress = {
 
 - (void)stop
 {
-    if(!self.running) { return; }
     self.running = NO;
 
     AudioObjectPropertyListenerBlock listener = self.listenerBlock;
     if(listener == nil) { return; }
-    self.listenerBlock = nil;
-    AudioObjectRemovePropertyListenerBlock(kAudioObjectSystemObject,
-                                           &KYADefaultOutputDeviceAddress,
-                                           dispatch_get_main_queue(),
-                                           listener);
+    // Keep the block if removal fails, so a later -stop can retry and
+    // -start doesn't register a second listener next to it.
+    if(AudioObjectRemovePropertyListenerBlock(kAudioObjectSystemObject,
+                                              &KYADefaultOutputDeviceAddress,
+                                              dispatch_get_main_queue(),
+                                              listener) == noErr)
+    {
+        self.listenerBlock = nil;
+    }
 }
 
 #pragma mark - Public API
