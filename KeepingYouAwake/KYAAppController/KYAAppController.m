@@ -44,6 +44,11 @@
 // transitions (unplugged → AC) instead of every battery notification.
 @property (nonatomic) BOOL acTriggerWasOnAC;
 
+// Incremented on every activation. A session's completion block captures
+// its value, so the asynchronous end of a replaced session can tell it is
+// no longer the current one — even if the replacement already ended too.
+@property (nonatomic) NSUInteger sessionGeneration;
+
 // Who started the active session. Holds the activation source for the
 // running timer and naturally encodes the invariant "a feature trigger
 // never deactivates a user-initiated session" via
@@ -428,14 +433,19 @@
 
     Auto defaults = NSUserDefaults.standardUserDefaults;
 
+    self.sessionGeneration += 1;
+    NSUInteger generation = self.sessionGeneration;
     AutoWeak weakSelf = self;
     Auto timerCompletion = ^(BOOL cancelled) {
-        // The timer runs this asynchronously and reads the completion
-        // block at run time. When a session is replaced (URL scheme,
-        // AppleScript, CLI, MCP or Shortcuts "activate" while active), the
-        // old session's completion runs after the new one started — it
-        // must not post "deactivated", log an expiry or quit the app.
-        if([weakSelf.sleepWakeTimer isScheduled]) { return; }
+        Auto strongSelf = weakSelf;
+        // Runs asynchronously on the main queue. When this session was
+        // replaced (URL scheme, AppleScript, CLI, MCP or Shortcuts
+        // "activate" while active), a newer session has started since:
+        // ending this one must not tear down the newer one's side effects,
+        // post "deactivated", log an expiry or quit the app.
+        if(strongSelf == nil || generation != strongSelf.sessionGeneration) { return; }
+
+        [strongSelf tearDownSessionSideEffects];
 
         // Post deactivation notification
         if(@available(macOS 11.0, *))
@@ -1192,15 +1202,13 @@
     [self startMouseJigglerIfEnabled];
 }
 
-- (void)sleepWakeTimerDidDeactivate:(KYASleepWakeTimer *)sleepWakeTimer
+// Session teardown lives in the per-session completion block (see
+// -activateTimerWithTimeInterval:source:) rather than in
+// -sleepWakeTimerDidDeactivate:, which is delivered asynchronously without
+// saying which session ended — after a replacement it would tear down the
+// newer session.
+- (void)tearDownSessionSideEffects
 {
-    // Delivered asynchronously. If a new session was started in the
-    // meantime (terminate-then-activate in the same run-loop turn), this
-    // belongs to the replaced session: tearing down now would stop the
-    // jiggler, Drive Alive and power monitoring of the running session and
-    // show the inactive icon while it runs.
-    if([sleepWakeTimer isScheduled]) { return; }
-
     // Update the status item
     self.statusItemController.appearance = KYAStatusItemAppearanceInactive;
 
