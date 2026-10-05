@@ -58,6 +58,21 @@ except ImportError as e:
 ACTIVITY_LOG_PATH = (
     Path.home() / "Library" / "Application Support" / "KeepingYouAwake" / "activity.jsonl"
 )
+# Where a sandboxed (Xcode-signed) build writes the same file. Release
+# builds are ad-hoc signed without entitlements, so they use the path above.
+CONTAINER_ACTIVITY_LOG_PATH = (
+    Path.home() / "Library" / "Containers" / "info.marcel-dierkes.KeepingYouAwake"
+    / "Data" / "Library" / "Application Support" / "KeepingYouAwake" / "activity.jsonl"
+)
+
+
+def _activity_log_path() -> Path:
+    """The activity log KYA is writing to: the most recently modified of the
+    unsandboxed and sandbox-container locations (unsandboxed if neither exists)."""
+    existing = [p for p in (ACTIVITY_LOG_PATH, CONTAINER_ACTIVITY_LOG_PATH) if p.exists()]
+    if not existing:
+        return ACTIVITY_LOG_PATH
+    return max(existing, key=lambda p: p.stat().st_mtime)
 
 ALLOWED_DEFAULT_KEYS = {
     "info.marcel-dierkes.KeepingYouAwake.ActivateOnACPowerEnabled",
@@ -90,12 +105,13 @@ def _read_recent_entries(limit: int) -> list[dict[str, Any]]:
     much smaller, and there's no reason to materialise more than that.
     """
     from collections import deque
-    if not ACTIVITY_LOG_PATH.exists():
+    log_path = _activity_log_path()
+    if not log_path.exists():
         return []
     if int(limit) <= 0:
         return []
     tail: deque[dict[str, Any]] = deque(maxlen=int(limit))
-    with ACTIVITY_LOG_PATH.open("r", encoding="utf-8") as f:
+    with log_path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -118,13 +134,15 @@ def _safe_iso_to_epoch(s: Any) -> float | None:
 
 
 def _current_status() -> dict[str, Any]:
-    """Best-effort: the most recent log entry without `endedAt` is "active".
+    """Best-effort: "active" when the most recent log entry has no `endedAt`.
 
     Tolerant to malformed `startedAt` — if the timestamp can't be
     parsed we still return `active=True` but omit `fireDate` /
     `remainingSeconds` rather than crashing the MCP call.
     """
-    entries = _read_recent_entries(50)
+    # Only one session is open at a time, so the newest entry decides. An
+    # older entry without endedAt was left behind by a quit or crash.
+    entries = _read_recent_entries(1)
     for entry in entries:
         if "endedAt" not in entry or entry.get("endedAt") is None:
             started = entry.get("startedAt")
@@ -232,7 +250,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[mcp_types.Text
         duration = arguments["duration"]
         if isinstance(duration, str):
             if duration == "indefinite":
-                _open_url("keepingyouawake:///activate")
+                # Explicit seconds=0: without a duration the app uses its
+                # default duration, which is not indefinite.
+                _open_url("keepingyouawake:///activate?seconds=0")
             elif duration == "until_end_of_day":
                 # Compute seconds until next local midnight.
                 now = datetime.now()
