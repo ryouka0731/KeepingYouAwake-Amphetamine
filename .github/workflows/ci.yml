@@ -314,6 +314,11 @@ jobs:
           # Register the app with LaunchServices so the URL scheme resolves
           /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
             -f "$APP"
+          # Drive Alive writes a per-PID ping file while a session runs;
+          # the re-activate check below uses it to observe that the
+          # session's side effects survive a replacement.
+          defaults write info.marcel-dierkes.KeepingYouAwake \
+            info.marcel-dierkes.KeepingYouAwake.DriveAliveEnabled -bool YES
           open -j -g "$APP"
 
           # Wait for the app to be alive
@@ -505,6 +510,60 @@ jobs:
           fi
 
           echo "PASS: natural-expiry session wrote endedReason=$EXPECTED_REASON with valid endedAt"
+
+          echo "--- Re-activate while active keeps the running session intact ---"
+          # A URL-scheme activate while active ends the old session and
+          # starts a new one in the same run-loop turn. The old session's
+          # asynchronous deactivate callback must not tear down the new
+          # session (Drive Alive / jiggler / power monitoring / icon).
+          KYA_PID="$(pgrep -x KeepingYouAwake | head -n 1)"
+          PING="$(getconf DARWIN_USER_TEMP_DIR)info.marcel-dierkes.KeepingYouAwake.drive-alive.${KYA_PID}"
+          open "keepingyouawake:///activate?seconds=60"
+          sleep 3
+          open "keepingyouawake:///activate?seconds=60"
+          sleep 3
+          if ! pgrep -f "caffeinate.*-di" >/dev/null; then
+            echo "::error::caffeinate not running after re-activate"
+            exit 1
+          fi
+          if [ ! -f "$PING" ]; then
+            echo "::error::Drive Alive ping file gone after re-activate ($PING)"
+            ls -la "$(getconf DARWIN_USER_TEMP_DIR)" | grep -i drive-alive || true
+            exit 1
+          fi
+          echo "PASS: re-activated session keeps Drive Alive running"
+          open "keepingyouawake:///deactivate"
+          sleep 3
+
+          echo "--- Session left open by a killed process is closed on relaunch ---"
+          open "keepingyouawake:///activate?seconds=0"
+          sleep 3
+          if ! tail -n 1 "$LOG" | jq -e 'has("endedAt") | not' >/dev/null; then
+            echo "::error::Expected an open entry before the kill:"
+            tail -n 1 "$LOG"
+            exit 1
+          fi
+          killall -9 KeepingYouAwake
+          sleep 2
+          open -j -g "$APP"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if pgrep -x KeepingYouAwake >/dev/null; then break; fi
+            sleep 1
+          done
+          sleep 2
+          LATEST=$(tail -n 1 "$LOG")
+          echo "Latest activity-log entry after relaunch: $LATEST"
+          if ! echo "$LATEST" | jq -e 'has("endedAt") and .endedReason == "app-terminated"' >/dev/null; then
+            echo "::error::Dangling entry was not closed with endedReason=app-terminated"
+            exit 1
+          fi
+          STATUS_AFTER_KILL="$(python3 tools/cli/kya.py status --json || true)"
+          echo "$STATUS_AFTER_KILL"
+          if ! echo "$STATUS_AFTER_KILL" | jq -e '.active == false' >/dev/null; then
+            echo "::error::kya status still reports active after the killed session was closed"
+            exit 1
+          fi
+          echo "PASS: killed session closed on relaunch and kya status reports inactive"
 
           # Quit the app cleanly
           osascript -e 'tell application "KeepingYouAwake" to quit' || \
