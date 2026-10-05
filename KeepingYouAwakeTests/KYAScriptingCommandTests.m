@@ -8,7 +8,7 @@
 //  The three AppleScript commands (activate / deactivate / toggle)
 //  emit `keepingyouawake:///…` URLs through a class-level dispatcher
 //  seam on `KYAScriptingProxy`. In production the seam falls through
-//  to `-[NSWorkspace openURL:configuration:completionHandler:]`. These
+//  to the in-process `-[KYAEventHandler handleEventForURL:]`. These
 //  tests install a capturing dispatcher in `setUp`, exercise each
 //  command's `-performDefaultImplementation`, and assert both the
 //  return value (always `@YES`, per the dispatched-not-completed
@@ -66,7 +66,7 @@
     self.capturedURL = nil;
     __weak typeof(self) weakSelf = self;
     [KYAScriptingProxy kya_setURLDispatcherForTesting:^(NSURL *url) {
-        // Capture only — never call through to NSWorkspace.
+        // Capture only — never call through to the event handler.
         weakSelf.capturedURL = url;
     }];
 }
@@ -161,6 +161,41 @@
     XCTAssertEqualObjects(result, @YES);
     XCTAssertEqualObjects(self.capturedURL.absoluteString,
                           @"keepingyouawake:///toggle");
+}
+
+#pragma mark - Stale-entry guard
+
+- (void)testEntryStartedInLaunchSecondIsNotStale
+{
+    // Launch at x.4s; the session started at x.7s but the JSONL only
+    // keeps whole seconds, so it reads back as x.0s.
+    NSDate *launch = [NSDate dateWithTimeIntervalSinceReferenceDate:1000.4];
+    NSDate *startedAt = [NSDate dateWithTimeIntervalSinceReferenceDate:1000.0];
+
+    XCTAssertTrue([KYAScriptingProxy kya_isEntryStartedAt:startedAt fromLaunchAt:launch]);
+}
+
+- (void)testEntryStartedAfterLaunchIsNotStale
+{
+    NSDate *launch = [NSDate dateWithTimeIntervalSinceReferenceDate:1000.4];
+    NSDate *startedAt = [NSDate dateWithTimeIntervalSinceReferenceDate:1005.0];
+
+    XCTAssertTrue([KYAScriptingProxy kya_isEntryStartedAt:startedAt fromLaunchAt:launch]);
+}
+
+- (void)testEntryStartedBeforeLaunchSecondIsStale
+{
+    NSDate *launch = [NSDate dateWithTimeIntervalSinceReferenceDate:1000.4];
+    NSDate *startedAt = [NSDate dateWithTimeIntervalSinceReferenceDate:999.0];
+
+    XCTAssertFalse([KYAScriptingProxy kya_isEntryStartedAt:startedAt fromLaunchAt:launch]);
+}
+
+- (void)testUnknownLaunchDateTrustsEntry
+{
+    NSDate *startedAt = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
+
+    XCTAssertTrue([KYAScriptingProxy kya_isEntryStartedAt:startedAt fromLaunchAt:nil]);
 }
 
 @end
