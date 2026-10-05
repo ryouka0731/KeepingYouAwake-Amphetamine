@@ -121,6 +121,10 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
 /// Set when -closeDanglingEntriesWithReason: couldn't write its repair; the
 /// next append retries it so dangling entries don't stay open on disk.
 @property (copy, nonatomic, nullable) NSString *pendingDanglingRepairReason;
+/// End of the open entry that couldn't be written; the next append
+/// records it instead of treating the entry as an unrecorded expiry.
+@property (copy, nonatomic, nullable) NSDate *pendingEndedAt;
+@property (copy, nonatomic, nullable) NSString *pendingEndedReason;
 @end
 
 @implementation KYAActivityLogger
@@ -299,16 +303,17 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
     {
         [self closeDanglingDictionaries:dicts endedAt:entry.startedAt reason:pendingRepairReason];
     }
-    // A session still open here ended without being recorded: its
-    // caffeinate exited at the fire date and a new session started before
-    // the main queue delivered the expiry. Close it as expired so it isn't
-    // orphaned (the late expiry then sees a newer session and skips).
+    // A session still open here ended without being recorded: either its
+    // end write failed (pendingEnded*), or its caffeinate exited at the
+    // fire date and a new session started before the main queue delivered
+    // the expiry. Close it so it isn't orphaned (a late expiry then sees a
+    // newer session and skips).
     NSInteger openLine = self.openEntryLineNumber;
     if(openLine >= 0 && (NSUInteger)openLine < dicts.count && dicts[(NSUInteger)openLine][@"endedAt"] == nil)
     {
         NSMutableDictionary *open = [dicts[(NSUInteger)openLine] mutableCopy];
-        open[@"endedAt"] = [[NSISO8601DateFormatter new] stringFromDate:entry.startedAt];
-        open[@"endedReason"] = KYAActivityLogEndedReasonExpired;
+        open[@"endedAt"] = [[NSISO8601DateFormatter new] stringFromDate:self.pendingEndedAt ?: entry.startedAt];
+        open[@"endedReason"] = self.pendingEndedReason ?: KYAActivityLogEndedReasonExpired;
         dicts[(NSUInteger)openLine] = [open copy];
     }
     [dicts addObject:[entry dictionaryRepresentation]];
@@ -323,6 +328,8 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
     {
         self.openEntryLineNumber = (NSInteger)dicts.count - 1;
         self.pendingDanglingRepairReason = nil;
+        self.pendingEndedAt = nil;
+        self.pendingEndedReason = nil;
     }
 }
 
@@ -350,6 +357,13 @@ NSString * const KYAActivityLogEndedReasonAppTerminated    = @"app-terminated";
     if([self writeAllDictionaries:dicts])
     {
         self.openEntryLineNumber = -1;
+        self.pendingEndedAt = nil;
+        self.pendingEndedReason = nil;
+    }
+    else
+    {
+        self.pendingEndedAt = endedAt;
+        self.pendingEndedReason = reason;
     }
 }
 
