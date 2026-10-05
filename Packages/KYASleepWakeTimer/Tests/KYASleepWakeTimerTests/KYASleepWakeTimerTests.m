@@ -188,9 +188,15 @@
     [self.timer invalidate];
     // A second invalidate (app quit, dealloc) must not re-run it.
     [self.timer invalidate];
-    XCTAssertNil(self.timer.completionBlock);
 
     [self waitForExpectations:@[completed, secondCall] timeout:0.5];
+}
+
+- (void)testInvalidateClearsCompletionBlock
+{
+    [self.timer scheduleWithTimeInterval:KYASleepWakeTimeIntervalIndefinite completion:^(BOOL cancelled) {}];
+    [self.timer invalidate];
+    XCTAssertTrue(self.timer.completionBlock == nil);
 }
 
 @end
