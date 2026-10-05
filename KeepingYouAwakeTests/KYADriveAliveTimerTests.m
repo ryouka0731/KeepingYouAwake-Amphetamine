@@ -133,15 +133,42 @@
     [old start];
     [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeA] exists:YES];
 
+    NSURL *ping = [self pingURLInVolume:self.volumeA];
+    NSString *oldContent = [NSString stringWithContentsOfURL:ping encoding:NSUTF8StringEncoding error:nil];
     KYADriveAliveTimer *replacement = [[KYADriveAliveTimer alloc] initWithInterval:60.0 volumesProvider:provider];
     [replacement start];
-    // Let the replacement rewrite the shared path before the old one stops.
-    [self assertFileAtURL:[self pingURLInVolume:self.volumeA] staysPresentFor:0.5];
+    // Wait until the replacement has rewritten the shared path (its token
+    // differs) before stopping the old timer.
+    NSPredicate *rewritten = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        NSString *content = [NSString stringWithContentsOfURL:ping encoding:NSUTF8StringEncoding error:nil];
+        return content.length > 0 && ![content isEqualToString:oldContent];
+    }];
+    [self expectationForPredicate:rewritten evaluatedWithObject:self handler:nil];
+    [self waitForExpectationsWithTimeout:5.0 handler:nil];
     [old stop];
     [self assertFileAtURL:[self pingURLInVolume:self.volumeA] staysPresentFor:1.0];
 
     [replacement stop];
     [self waitUntilFileAtURL:[self pingURLInVolume:self.volumeA] exists:NO];
+}
+
+- (void)testEmptyLeftoverFileIsReclaimed
+{
+    // What an interrupted write of ours leaves behind must not block the
+    // volume forever.
+    NSURL *ping = [self pingURLInVolume:self.volumeA];
+    XCTAssertTrue([NSData.data writeToURL:ping atomically:NO]);
+    NSArray<NSURL *> *volumes = @[self.volumeA];
+    KYADriveAliveTimer *timer = [[KYADriveAliveTimer alloc] initWithInterval:60.0
+                                                             volumesProvider:^NSArray<NSURL *> *{ return volumes; }];
+    [timer start];
+    NSPredicate *written = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return [[NSString stringWithContentsOfURL:ping encoding:NSUTF8StringEncoding error:nil] hasPrefix:@"keepingyouawake "];
+    }];
+    [self expectationForPredicate:written evaluatedWithObject:self handler:nil];
+    [self waitForExpectationsWithTimeout:5.0 handler:nil];
+    [timer stop];
+    [self waitUntilFileAtURL:ping exists:NO];
 }
 
 - (void)testVolumeEligibility
