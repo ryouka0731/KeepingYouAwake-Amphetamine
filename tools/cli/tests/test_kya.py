@@ -97,6 +97,12 @@ def _write_log(tmp_path: Path, lines) -> Path:
     return p
 
 
+@pytest.fixture(autouse=True)
+def _no_container_log(tmp_path, monkeypatch):
+    """Keep a real sandbox-container log on the dev machine out of tests."""
+    monkeypatch.setattr(kya, "CONTAINER_ACTIVITY_LOG_PATH", tmp_path / "no-container" / "activity.jsonl")
+
+
 @pytest.fixture()
 def patched_log(tmp_path, monkeypatch):
     """Return a callable that installs a synthetic log and points kya at it."""
@@ -277,3 +283,63 @@ def test_status_subprocess_human_active(tmp_path):
     assert res.returncode == 0
     assert "active" in res.stdout
     assert "source=test" in res.stdout
+
+
+# --------------------------------------------------------------------------
+# Regression tests (autoresearch debug findings)
+# --------------------------------------------------------------------------
+
+def test_current_status_ignores_stale_open_entry_behind_newer_closed(patched_log):
+    # KYA quit (or crashed) mid-session, leaving an open entry; a later
+    # session was opened and closed normally. Only one session can be open
+    # at a time, so the newest entry decides the state.
+    patched_log([
+        {"startedAt": "2024-01-01T00:00:00Z", "source": "stale"},
+        {"startedAt": "2024-01-02T00:00:00Z", "endedAt": "2024-01-02T01:00:00Z", "source": "user"},
+    ])
+    assert kya._current_status() == {"active": False}
+
+
+def test_activate_without_duration_requests_indefinite(monkeypatch):
+    # `activate` with no query falls back to the app's default duration,
+    # not indefinite; the CLI must send an explicit seconds=0.
+    urls = []
+    monkeypatch.setattr(kya, "_open_url", lambda url: urls.append(url) or 0)
+    assert kya.main(["activate"]) == 0
+    assert urls == ["keepingyouawake:///activate?seconds=0"]
+
+
+def test_activity_log_path_prefers_most_recently_written(tmp_path, monkeypatch):
+    home_log = tmp_path / "home" / "activity.jsonl"
+    container_log = tmp_path / "container" / "activity.jsonl"
+    for path in (home_log, container_log):
+        path.parent.mkdir(parents=True)
+        path.write_text("{}\n", encoding="utf-8")
+    os.utime(home_log, (1_000, 1_000))
+    os.utime(container_log, (2_000, 2_000))
+    monkeypatch.setattr(kya, "ACTIVITY_LOG_PATH", home_log)
+    monkeypatch.setattr(kya, "CONTAINER_ACTIVITY_LOG_PATH", container_log)
+    assert kya._activity_log_path() == container_log
+
+    os.utime(home_log, (3_000, 3_000))
+    assert kya._activity_log_path() == home_log
+
+
+def test_activity_log_path_defaults_to_home_when_none_exist(tmp_path, monkeypatch):
+    home_log = tmp_path / "home" / "activity.jsonl"
+    monkeypatch.setattr(kya, "ACTIVITY_LOG_PATH", home_log)
+    assert kya._activity_log_path() == home_log
+
+
+def test_status_subprocess_reads_sandbox_container_log(tmp_path):
+    # A sandboxed (Xcode-signed) build writes under its container.
+    log_dir = (tmp_path / "Library" / "Containers" / "info.marcel-dierkes.KeepingYouAwake"
+               / "Data" / "Library" / "Application Support" / "KeepingYouAwake")
+    log_dir.mkdir(parents=True)
+    (log_dir / "activity.jsonl").write_text(
+        json.dumps({"startedAt": "2024-01-01T00:00:00Z", "source": "container"}) + "\n",
+        encoding="utf-8",
+    )
+    res = _run_status(tmp_path, "--json")
+    assert res.returncode == 0
+    assert json.loads(res.stdout)["source"] == "container"
