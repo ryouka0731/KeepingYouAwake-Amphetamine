@@ -53,12 +53,18 @@ typedef void (^KYAScriptingURLDispatcher)(NSURL *url);
 + (BOOL)kya_isEntryStartedAt:(NSDate *)startedAt fromLaunchAt:(nullable NSDate *)launchDate;
 
 /// Read state from `logger` instead of the shared activity logger.
-/// Pass nil to restore the default.
+/// Pass nil to restore the default. Clears the open-entry cache.
 - (void)kya_setActivityLoggerForTesting:(nullable KYAActivityLogger *)logger;
 
 /// Use `launchDate` for the stale-entry guard instead of this process's
-/// launch date. Pass nil to restore the default.
+/// launch date. Pass nil to restore the default. Clears the open-entry
+/// cache.
 - (void)kya_setLaunchDateForTesting:(nullable NSDate *)launchDate;
+
+/// Pin the clock used for the cache TTL and post-command bypass window,
+/// so timing tests don't depend on wall-clock sleeps. Pass nil to
+/// restore the real clock.
+- (void)kya_setNowForTesting:(nullable NSDate *)now;
 
 /// Clear test overrides and the open-entry cache. Tests MUST call this
 /// in `tearDown` since the proxy is a singleton.
