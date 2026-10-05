@@ -6,7 +6,7 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-(no changes since v1.7.0-amphetamine.5 — add new entries here.)
+- **Drive Alive keeps external drives active**: besides the startup disk, it now rewrites a hidden `.KeepingYouAwake-DriveAlive` file at the root of every mounted external, local, writable volume every 30 s while a session runs, and removes it when the session ends.
 
 ### v1.7.0-amphetamine.5 (2026-10-06)
 
