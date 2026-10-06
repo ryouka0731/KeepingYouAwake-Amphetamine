@@ -8,7 +8,9 @@
 #import "KYAWatchedItemsSettingsViewController.h"
 #import <KYACommon/KYACommon.h>
 #import <KYAApplicationSupport/KYAApplicationSupport.h>
+#import <KYADeviceInfo/KYADeviceInfo.h>
 #import "KYALocalizedStrings.h"
+@import CoreLocation;
 
 #if __has_include(<UniformTypeIdentifiers/UniformTypeIdentifiers.h>)
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -54,6 +56,10 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 @property (nonatomic) NSMutableArray<NSString *> *ssids;
 @property (nonatomic) NSMutableArray<NSString *> *bundleIdentifiers;
 @property (nonatomic) NSMutableArray<NSString *> *directories;
+
+/// Asks for the Location authorization macOS 14+ requires before an app
+/// may read the joined Wi-Fi network's name.
+@property (nonatomic, nullable) CLLocationManager *locationManager;
 
 /// Each entry is a mutable copy of a `kya_scheduleWindows` dictionary:
 /// keys `KYAScheduleWindowKeyWeekdays` (NSArray<NSNumber*> of 1..7),
@@ -566,7 +572,11 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 - (void)segmentedControlAction:(NSSegmentedControl *)sender
 {
     Auto kind = (KYAWatchedItemsListKind)sender.tag;
-    if(sender.selectedSegment == 0)
+    if(sender.selectedSegment == 0 && kind == KYAWatchedItemsListKindWiFiSSIDs)
+    {
+        [self presentSSIDAddMenuFromControl:sender];
+    }
+    else if(sender.selectedSegment == 0)
     {
         [self addItemForKind:kind];
     }
@@ -611,6 +621,132 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     [self.scheduleTableView scrollRowToVisible:row];
     [self.scheduleTableView selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
     [self updateRemoveButtonsEnabledState];
+}
+
+#pragma mark - Wi-Fi Networks
+
+/// "+" for Wi-Fi offers the joined network first: an SSID typed by hand
+/// must match exactly, which is easy to get wrong. Typing stays available
+/// for networks the Mac is not joined to right now.
+- (void)presentSSIDAddMenuFromControl:(NSSegmentedControl *)control
+{
+    Auto menu = [NSMenu new];
+    menu.autoenablesItems = NO;
+
+    NSString *currentSSID = KYAWiFiMonitor.sharedMonitor.currentSSID;
+    if(currentSSID.length > 0)
+    {
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_ADD_CURRENT_NETWORK(currentSSID)
+                                               action:@selector(addCurrentSSIDFromMenuItem:)
+                                        keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = currentSSID;
+        if([self containsSSID:currentSSID])
+        {
+            item.state = NSControlStateValueOn;
+            item.enabled = NO;
+        }
+        [menu addItem:item];
+    }
+    else if([self isLocationAccessGranted])
+    {
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_NOT_CONNECTED action:nil keyEquivalent:@""];
+        item.enabled = NO;
+        [menu addItem:item];
+    }
+    else
+    {
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_NEEDS_LOCATION action:nil keyEquivalent:@""];
+        item.enabled = NO;
+        [menu addItem:item];
+        Auto settingsItem = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_OPEN_LOCATION_SETTINGS
+                                                       action:@selector(openLocationServicesSettings:)
+                                                keyEquivalent:@""];
+        settingsItem.target = self;
+        [menu addItem:settingsItem];
+        // Shows the system prompt if the user has not been asked yet.
+        [self requestLocationAuthorizationIfNeeded];
+    }
+
+    [menu addItem:NSMenuItem.separatorItem];
+    Auto enterItem = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_ENTER_NETWORK_NAME
+                                                action:@selector(enterSSIDFromMenuItem:)
+                                         keyEquivalent:@""];
+    enterItem.target = self;
+    [menu addItem:enterItem];
+
+    Auto y = control.isFlipped ? NSHeight(control.bounds) + 4.0 : -4.0;
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0.0, y) inView:control];
+}
+
+- (BOOL)containsSSID:(NSString *)ssid
+{
+    for(NSString *existing in self.ssids)
+    {
+        if([existing caseInsensitiveCompare:ssid] == NSOrderedSame) { return YES; }
+    }
+    return NO;
+}
+
+- (void)addCurrentSSIDFromMenuItem:(NSMenuItem *)sender
+{
+    NSString *ssid = sender.representedObject;
+    if(![ssid isKindOfClass:NSString.class]) { return; }
+    // Drop a placeholder an aborted manual entry may have left behind.
+    [self removeEmptySSIDPlaceholders];
+    if([self addString:ssid toKind:KYAWatchedItemsListKindWiFiSSIDs])
+    {
+        Auto row = (NSInteger)(self.ssids.count - 1);
+        [self.ssidTableView scrollRowToVisible:row];
+    }
+}
+
+- (void)enterSSIDFromMenuItem:(NSMenuItem *)sender
+{
+    [self addEmptySSIDRowAndBeginEditing];
+}
+
+- (CLAuthorizationStatus)locationAuthorizationStatus
+{
+    if(@available(macOS 11.0, *))
+    {
+        if(self.locationManager != nil) { return self.locationManager.authorizationStatus; }
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    return [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+}
+
+/// Before macOS 14 the SSID is readable without Location authorization.
+- (BOOL)isLocationAccessGranted
+{
+    if(@available(macOS 14.0, *)) {} else { return YES; }
+    Auto status = [self locationAuthorizationStatus];
+    return status != kCLAuthorizationStatusNotDetermined
+        && status != kCLAuthorizationStatusDenied
+        && status != kCLAuthorizationStatusRestricted;
+}
+
+- (void)requestLocationAuthorizationIfNeeded
+{
+    if(@available(macOS 10.15, *))
+    {
+        if(self.locationManager == nil)
+        {
+            self.locationManager = [CLLocationManager new];
+        }
+        if([self locationAuthorizationStatus] == kCLAuthorizationStatusNotDetermined)
+        {
+            [self.locationManager requestWhenInUseAuthorization];
+        }
+    }
+}
+
+- (void)openLocationServicesSettings:(NSMenuItem *)sender
+{
+    Auto url = [NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices"];
+    [NSWorkspace.sharedWorkspace openURL:url];
 }
 
 - (void)addEmptySSIDRowAndBeginEditing
