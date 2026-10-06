@@ -970,14 +970,28 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 
     if(row < 0 || row >= (NSInteger)self.ssids.count) { return; }
 
+    Auto whitespace = NSCharacterSet.whitespaceAndNewlineCharacterSet;
     Auto previousValue = self.ssids[(NSUInteger)row];
     BOOL wasPlaceholder = (previousValue.length == 0);
+
+    // Surrounding spaces can be part of a real SSID, and one added from
+    // the joined network is stored verbatim. Keep such a value when an
+    // edit doesn't change it beyond whitespace, and keep typed spaces when
+    // the input is exactly the joined network's name.
+    if(!wasPlaceholder && [trimmed isEqualToString:[previousValue stringByTrimmingCharactersInSet:whitespace]])
+    {
+        [tableView reloadData];
+        return;
+    }
+    NSString *currentSSID = KYAWiFiMonitor.sharedMonitor.currentSSID;
+    Auto valueToStore = (currentSSID != nil && trimmed.length > 0 && [newValue caseInsensitiveCompare:currentSSID] == NSOrderedSame) ? newValue : trimmed;
 
     BOOL isDuplicate = NO;
     for(NSInteger i = 0; i < (NSInteger)self.ssids.count; i++)
     {
         if(i == row) { continue; }
-        if([self.ssids[(NSUInteger)i] caseInsensitiveCompare:trimmed] == NSOrderedSame) { isDuplicate = YES; break; }
+        Auto existing = [self.ssids[(NSUInteger)i] stringByTrimmingCharactersInSet:whitespace];
+        if(existing.length > 0 && [existing caseInsensitiveCompare:trimmed] == NSOrderedSame) { isDuplicate = YES; break; }
     }
 
     if(trimmed.length == 0 || (isDuplicate && wasPlaceholder))
@@ -996,7 +1010,7 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     }
     else
     {
-        self.ssids[(NSUInteger)row] = trimmed;
+        self.ssids[(NSUInteger)row] = valueToStore;
     }
 
     [self persistModelForKind:KYAWatchedItemsListKindWiFiSSIDs];
