@@ -1,8 +1,7 @@
 // Regenerates KeepingYouAwake/AppIcon.icns from the Icon Composer source:
 //
 //   swift scripts/render-app-icon.swift \
-//     KeepingYouAwake/AppIcon.icon/Assets/AppIcon.svg /tmp/kya-icon
-//   iconutil -c icns /tmp/kya-icon/AppIcon.iconset -o KeepingYouAwake/AppIcon.icns
+//     KeepingYouAwake/AppIcon.icon/Assets/AppIcon.svg KeepingYouAwake/AppIcon.icns
 //
 // Run it again whenever AppIcon.icon changes. The .icns is what builds made
 // with Xcode < 26 ship (release.yml uses Xcode 16); Xcode 26 compiles
@@ -14,8 +13,13 @@ import AppKit
 // square with the light fill from icon.json and the cup logo in the
 // icon.json foreground colour.
 let args = CommandLine.arguments
+guard args.count == 3 else {
+    FileHandle.standardError.write("usage: swift \(args[0]) <AppIcon.svg> <output.icns>\n".data(using: .utf8)!)
+    exit(64)
+}
 let svgURL = URL(fileURLWithPath: args[1])
-let outDir = URL(fileURLWithPath: args[2])
+let outputURL = URL(fileURLWithPath: args[2])
+let outDir = FileManager.default.temporaryDirectory.appendingPathComponent("kya-app-icon-\(UUID().uuidString)")
 guard let logo = NSImage(contentsOf: svgURL) else { fatalError("cannot load \(svgURL.path)") }
 
 func srgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> NSColor { NSColor(srgbRed: r, green: g, blue: b, alpha: 1) }
@@ -69,5 +73,15 @@ for base in [16, 32, 128, 256, 512] {
     try! render(size: base).write(to: iconset.appendingPathComponent("icon_\(base)x\(base).png"))
     try! render(size: base * 2).write(to: iconset.appendingPathComponent("icon_\(base)x\(base)@2x.png"))
 }
-try! render(size: 1024).write(to: outDir.appendingPathComponent("preview-1024.png"))
-print("wrote \(iconset.path)")
+
+let iconutil = Process()
+iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+iconutil.arguments = ["-c", "icns", iconset.path, "-o", outputURL.path]
+try! iconutil.run()
+iconutil.waitUntilExit()
+try? FileManager.default.removeItem(at: outDir)
+guard iconutil.terminationStatus == 0 else {
+    FileHandle.standardError.write("iconutil failed (\(iconutil.terminationStatus))\n".data(using: .utf8)!)
+    exit(1)
+}
+print("wrote \(outputURL.path)")
