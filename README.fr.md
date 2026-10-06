@@ -6,7 +6,7 @@
 
 KeepingYouAwake (Amphetamine) est un petit utilitaire de barre de menus pour macOS 10.13+ qui empêche un Mac d'entrer en veille pendant une durée prédéfinie — ou tant qu'un déclencheur reste actif.
 
-## Ce qui est ajouté par rapport à l'amont 1.6.9
+## Ce qui est ajouté par rapport à l'amont 1.6.8
 
 | # | Fonctionnalité | PR |
 |---|----------------|----|
