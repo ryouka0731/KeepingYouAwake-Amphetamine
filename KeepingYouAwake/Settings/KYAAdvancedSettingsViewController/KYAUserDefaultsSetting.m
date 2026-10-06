@@ -55,7 +55,12 @@
 
 - (void)reset
 {
+    // Notify observers: the table's checkbox is bound to `value`, and
+    // -reloadData hands it the same object, so without KVO it kept
+    // showing the old state after "Reset to Default".
+    [self willChangeValueForKey:@"value"];
     [NSUserDefaults.standardUserDefaults removeObjectForKey:self.key];
+    [self didChangeValueForKey:@"value"];
 }
 
 @end

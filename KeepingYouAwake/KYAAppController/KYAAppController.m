@@ -179,6 +179,7 @@
 
 - (void)userDefaultsDidChange:(NSNotification *)notification
 {
+    [self reconcileSessionSideEffects];
     [self reconcileWatchedWiFiSSIDTrigger];
     [self reconcileWatchedApplicationTrigger];
     [self reconcileACPowerTrigger];
@@ -1229,6 +1230,22 @@
     [self disableDevicePowerMonitoring];
     [self stopDriveAlive];
     [self stopMouseJiggler];
+}
+
+#pragma mark - Session Side Effects
+
+/// Applies Mouse Jiggler / Drive Alive toggles to a running session right
+/// away. Otherwise turning the jiggler off in Settings kept moving the
+/// pointer until the session ended, and turning either on did nothing
+/// until the next session.
+- (void)reconcileSessionSideEffects
+{
+    if([self.sleepWakeTimer isScheduled] == NO) { return; }
+    Auto defaults = NSUserDefaults.standardUserDefaults;
+    if([defaults kya_isMouseJigglerEnabled]) { [self startMouseJigglerIfEnabled]; }
+    else { [self stopMouseJiggler]; }
+    if([defaults kya_isDriveAliveEnabled]) { [self startDriveAliveIfEnabled]; }
+    else { [self stopDriveAlive]; }
 }
 
 #pragma mark - Mouse Jiggler
