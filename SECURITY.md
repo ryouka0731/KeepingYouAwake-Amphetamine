@@ -10,7 +10,7 @@ Please **don't** open a public issue for a security problem.
 
 Report it privately through GitHub instead: [**Report a vulnerability**](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/security/advisories/new) (Security tab → *Report a vulnerability*). Include:
 
-- the affected version (Settings → About)
+- the affected component and version: the app version from Settings → About, or for the `kya` CLI / `kya-mcp-server`, the installed package version (`pip show` / `uv tool list`) or the source revision
 - what an attacker can do, and the steps or a proof of concept to reproduce it
 - any suggested fix, if you have one
 
