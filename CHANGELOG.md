@@ -6,7 +6,8 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-(no changes since v1.7.0-amphetamine.6 — add new entries here.)
+- **Security**: Sparkle 2.6.4 → 2.9.6, fixing GHSA-hg88-v3cw-3qrh (delta-update symlink traversal) and GHSA-g3hp-f6mg-559v (installer XPC listener accepted unvalidated connections). Capped to 2.9.x: Sparkle 2.10 requires macOS 12, above this app's macOS 10.13 minimum.
+- CI also builds the "(Direct)" scheme that releases ship, so Sparkle/updater breakage fails the PR instead of the release.
 
 ### v1.7.0-amphetamine.6 (2026-10-06)
 

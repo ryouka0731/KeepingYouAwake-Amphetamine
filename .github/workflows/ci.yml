@@ -65,6 +65,19 @@ jobs:
             | xcbeautify --renderer github-actions || \
           xcodebuild build $XCODEBUILD_ARGS -configuration Debug
 
+      - name: Build (Direct, Debug)
+        # The "(Direct)" scheme is what release.yml ships. Only it defines
+        # KYA_APP_UPDATER_ENABLED=1, so the Sparkle code in KYAAppUpdater.m
+        # compiles nowhere else — build it here so a Sparkle update or an
+        # updater change breaks the PR, not the release.
+        run: |
+          set -o pipefail
+          DIRECT_ARGS=(-workspace KeepingYouAwake.xcworkspace -scheme "KeepingYouAwake (Direct)"
+                       -destination platform=macOS -configuration Debug
+                       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
+          xcodebuild build "${DIRECT_ARGS[@]}" | xcbeautify --renderer github-actions || \
+          xcodebuild build "${DIRECT_ARGS[@]}"
+
   unit-test:
     name: Unit tests
     runs-on: macos-14
