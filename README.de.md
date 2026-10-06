@@ -6,7 +6,7 @@
 
 KeepingYouAwake (Amphetamine) ist ein schlankes Menüleisten-Tool für macOS 10.13+, das einen Mac für eine vordefinierte Dauer — oder solange ein Trigger aktiv ist — am Schlafmodus hindert.
 
-## Was zusätzlich zu Upstream 1.6.9 enthalten ist
+## Was zusätzlich zu Upstream 1.6.8 enthalten ist
 
 | # | Funktion | PR |
 |---|----------|----|
