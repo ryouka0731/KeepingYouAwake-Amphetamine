@@ -6,8 +6,12 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
+(no changes since v1.7.0-amphetamine.11 — add new entries here.)
+
+### v1.7.0-amphetamine.11 (2026-10-07)
+
 #### Changes
-- Watched Items: every Wi-Fi network, application, download folder and active-hours window has a checkbox that switches it on or off with one click, without removing it. Switched-off entries are dimmed and ignored by their trigger; the change applies immediately. Stored next to the existing lists (`DisabledWatchedWiFiSSIDs`, `DisabledWatchedApplicationBundleIdentifiers`, `DisabledDownloadDirectories`, and `enabled` = NO on a schedule window), so existing settings keep working unchanged. Switching off every download folder stops the download trigger instead of falling back to ~/Downloads.
+- Watched Items: every Wi-Fi network, application, download folder and active-hours window has a checkbox that switches it on or off with one click, without removing it. Switched-off entries are dimmed and ignored by their trigger; the change applies immediately. Stored next to the existing lists (`DisabledWatchedWiFiSSIDs`, `DisabledWatchedApplicationBundleIdentifiers`, `DisabledDownloadDirectories`, and `enabled` = NO on a schedule window), so existing settings keep working unchanged. Switching off every download folder stops the download trigger instead of falling back to ~/Downloads. [#120](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/120)
 
 ### v1.7.0-amphetamine.10 (2026-10-06)
 
