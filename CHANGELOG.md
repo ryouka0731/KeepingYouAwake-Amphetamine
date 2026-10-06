@@ -6,10 +6,17 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-- Turning **Mouse Jiggler** or **Drive Alive** on or off in Settings now applies to the running session immediately. Before, turning the jiggler off kept moving the pointer until the session ended.
-- Advanced settings: **Reset to Default** updates the checkboxes right away (upstream bug).
-- CI hardening (OpenSSF Scorecard): workflows default to read-only tokens with write access scoped to the jobs that need it; every action is pinned to a commit SHA, and checkout, setup-python, upload-artifact and codeql-action move to their Node 24 majors; Dependabot keeps the pins current; `SECURITY.md` points to private vulnerability reporting.
-- CI installs its Python tooling from hash-pinned locks (`.github/requirements/*.txt`, `pip --require-hashes`), also kept current by Dependabot.
+(no changes since v1.7.0-amphetamine.8 — add new entries here.)
+
+### v1.7.0-amphetamine.8 (2026-10-06)
+
+#### Fixes
+- Turning **Mouse Jiggler** or **Drive Alive** on or off in Settings now applies to the running session immediately. Before, turning the jiggler off kept moving the pointer until the session ended. [#110](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/110)
+- Advanced settings: **Reset to Default** updates the checkboxes right away (upstream bug). [#110](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/110)
+
+#### Security / infra
+- CI hardening (OpenSSF Scorecard): workflows default to read-only tokens with write access scoped to the jobs that need it; every action is pinned to a commit SHA, and checkout, setup-python, upload-artifact and codeql-action move to their Node 24 majors; Dependabot keeps the pins current; `SECURITY.md` points to private vulnerability reporting. [#111](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/111)
+- CI installs its Python tooling from hash-pinned locks (`.github/requirements/requirements-*.txt`, `pip --require-hashes`), also kept current by Dependabot. [#112](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/112), [#113](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/113)
 
 ### v1.7.0-amphetamine.7 (2026-10-06)
 
