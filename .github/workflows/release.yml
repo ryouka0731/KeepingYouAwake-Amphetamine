@@ -16,13 +16,16 @@ on:
         required: false
         type: string
 
+# Least privilege by default; the release job adds what it needs.
 permissions:
-  contents: write   # needed for `gh release upload`
-  actions: write    # needed for `gh workflow run appcast.yml` chain
+  contents: read
 
 jobs:
   build-and-upload:
     name: Build .dmg and attach to release
+    permissions:
+      contents: write   # needed for `gh release upload`
+      actions: write    # needed for `gh workflow run appcast.yml` chain
     # Use the newest macOS image so we get an Xcode that knows about
     # the Icon Composer (.icon) format (Xcode 16+ / macOS Tahoe).
     # Older runners (macos-14 / Xcode 15.x) silently copy the .icon
@@ -60,7 +63,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Resolved tag: $TAG"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ steps.tag.outputs.tag }}
 
@@ -212,7 +215,7 @@ jobs:
 
       - name: Upload artifacts on failure for triage
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: release-debug
           path: |

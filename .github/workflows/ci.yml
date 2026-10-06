@@ -7,6 +7,10 @@ on:
     branches: [main]
 
 # Cancel older runs against the same ref to keep the queue short.
+# Least privilege by default; jobs that need more declare it themselves.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -30,9 +34,9 @@ jobs:
     name: Python package tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
@@ -51,7 +55,7 @@ jobs:
     name: Build
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Show toolchain
         run: |
@@ -90,7 +94,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Run xcodebuild test
         # The KeepingYouAwake scheme already wires every SPM
@@ -293,7 +297,7 @@ jobs:
         # locally (`xccov view --file …`) without re-running CI. The
         # bundle is small (a few MB) and retention is short.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: xcresult
           path: build/TestResult.xcresult
@@ -304,7 +308,7 @@ jobs:
     runs-on: macos-14
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build app for E2E
         run: |
@@ -637,9 +641,9 @@ jobs:
     # unrelated PR that incidentally regresses the Sparkle
     # plumbing still gets caught.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 

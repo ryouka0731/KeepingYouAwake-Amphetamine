@@ -1,0 +1,12 @@
+# Keeps the commit-SHA–pinned GitHub Actions current: Dependabot rewrites
+# both the SHA and the trailing `# vX.Y.Z` comment. Security alerts for the
+# Swift packages are handled by Dependabot's default security updates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

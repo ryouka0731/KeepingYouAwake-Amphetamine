@@ -27,8 +27,9 @@ on:
     - cron: '0 4 * * 1'
   workflow_dispatch:
 
+# Least privilege by default; the generate job adds what it needs.
 permissions:
-  contents: write   # to push to gh-pages
+  contents: read
 
 concurrency:
   group: appcast
@@ -37,8 +38,10 @@ concurrency:
 jobs:
   generate:
     runs-on: macos-15
+    permissions:
+      contents: write   # to push to gh-pages
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Download Sparkle release tools
         # Pin a known-good Sparkle version. Bump as needed.
