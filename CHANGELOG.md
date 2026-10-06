@@ -6,7 +6,8 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-(no changes since v1.7.0-amphetamine.7 — add new entries here.)
+- Turning **Mouse Jiggler** or **Drive Alive** on or off in Settings now applies to the running session immediately. Before, turning the jiggler off kept moving the pointer until the session ended.
+- Advanced settings: **Reset to Default** updates the checkboxes right away (upstream bug).
 
 ### v1.7.0-amphetamine.7 (2026-10-06)
 
