@@ -978,7 +978,7 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     // the joined network is stored verbatim. Keep such a value when an
     // edit doesn't change it beyond whitespace, and keep typed spaces when
     // the input is exactly the joined network's name.
-    if(!wasPlaceholder && [trimmed isEqualToString:[previousValue stringByTrimmingCharactersInSet:whitespace]])
+    if(!wasPlaceholder && trimmed.length > 0 && [trimmed isEqualToString:[previousValue stringByTrimmingCharactersInSet:whitespace]])
     {
         [tableView reloadData];
         return;
