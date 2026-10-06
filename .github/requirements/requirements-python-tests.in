@@ -1,6 +1,6 @@
 # Python test deps for the "Python package tests" CI job.
 # Regenerate the pinned, hashed lock with:
 #   uv pip compile --universal --python-version 3.12 --generate-hashes \
-#     .github/requirements/python-tests.in -o .github/requirements/python-tests.txt
+#     .github/requirements/requirements-python-tests.in -o .github/requirements/requirements-python-tests.txt
 pytest
 mcp>=1.0.0,<2

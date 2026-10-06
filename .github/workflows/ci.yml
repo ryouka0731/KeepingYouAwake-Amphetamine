@@ -44,7 +44,7 @@ jobs:
         # `pytest` runs the suites; `mcp` lets the MCP-server runtime tests
         # actually execute instead of being skipped via importorskip.
         # Hash-pinned lock (see the .in file for how to regenerate it).
-        run: python -m pip install --require-hashes -r .github/requirements/python-tests.txt
+        run: python -m pip install --require-hashes -r .github/requirements/requirements-python-tests.txt
 
       - name: Run pytest (kya CLI + MCP server)
         # Test paths come from pytest.ini's `testpaths`; tools/conftest.py puts
@@ -655,7 +655,7 @@ jobs:
         # this whole job is on ubuntu-latest specifically to keep
         # it cheap and parallel with the Xcode jobs.
         # Hash-pinned lock (see the .in file for how to regenerate it).
-        run: python -m pip install --require-hashes -r .github/requirements/sparkle-verify.txt
+        run: python -m pip install --require-hashes -r .github/requirements/requirements-sparkle-verify.txt
 
       - name: Extract Sparkle config from source tree
         id: cfg
