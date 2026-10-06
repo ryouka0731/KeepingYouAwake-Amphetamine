@@ -10,7 +10,7 @@
 
 KeepingYouAwake (Amphetamine) は macOS 10.13 以降向けの軽量メニューバーユーティリティ。事前に決めた時間 — または何らかのトリガが続く間 — Mac をスリープさせない。
 
-## What's added on top of upstream 1.6.9
+## What's added on top of upstream 1.6.8
 
 | # | Feature | PR |
 |---|---------|----|
