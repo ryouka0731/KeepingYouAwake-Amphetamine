@@ -3604,7 +3604,7 @@
         "sk" : { "stringUnit" : { "state" : "translated", "value" : "Sledované siete Wi-Fi" } },
         "tr" : { "stringUnit" : { "state" : "translated", "value" : "İzlenen Wi-Fi Ağları" } },
         "uk" : { "stringUnit" : { "state" : "translated", "value" : "Відстежувані мережі Wi-Fi" } },
-        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Mạng Wi-Fi theo dõi" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Mạng Wi-Fi được theo dõi" } },
         "zh" : { "stringUnit" : { "state" : "translated", "value" : "监视的 Wi-Fi 网络" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "監視的 Wi-Fi 網路" } }
       }
@@ -3614,7 +3614,7 @@
       "localizations" : {
         "da" : { "stringUnit" : { "state" : "translated", "value" : "Forbliv aktiv, mens der er forbindelse til et af disse Wi-Fi-netværk (SSID’er)." } },
         "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktiv bleiben, solange eine Verbindung zu einem dieser WLAN-Netzwerke (SSIDs) besteht." } },
-        "el" : { "stringUnit" : { "state" : "translated", "value" : "Παραμονή ενεργό όσο υπάρχει σύνδεση σε ένα από αυτά τα δίκτυα Wi-Fi (SSID)." } },
+        "el" : { "stringUnit" : { "state" : "translated", "value" : "Διατήρηση ενεργοποίησης όσο υπάρχει σύνδεση σε ένα από αυτά τα δίκτυα Wi-Fi (SSID)." } },
         "es" : { "stringUnit" : { "state" : "translated", "value" : "Mantener activo mientras esté conectado a una de estas redes Wi-Fi (SSID)." } },
         "fi" : { "stringUnit" : { "state" : "translated", "value" : "Pysy aktiivisena, kun yhteys on johonkin näistä Wi-Fi-verkoista (SSID)." } },
         "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rester actif tant que le Mac est connecté à l’un de ces réseaux Wi-Fi (SSID)." } },
@@ -3656,7 +3656,7 @@
         "sk" : { "stringUnit" : { "state" : "translated", "value" : "Sledované aplikácie" } },
         "tr" : { "stringUnit" : { "state" : "translated", "value" : "İzlenen Uygulamalar" } },
         "uk" : { "stringUnit" : { "state" : "translated", "value" : "Відстежувані програми" } },
-        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Ứng dụng theo dõi" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Ứng dụng được theo dõi" } },
         "zh" : { "stringUnit" : { "state" : "translated", "value" : "监视的应用程序" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "監視的應用程式" } }
       }
@@ -3666,7 +3666,7 @@
       "localizations" : {
         "da" : { "stringUnit" : { "state" : "translated", "value" : "Forbliv aktiv, mens en af disse apps kører." } },
         "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktiv bleiben, solange eine dieser Apps läuft." } },
-        "el" : { "stringUnit" : { "state" : "translated", "value" : "Παραμονή ενεργό όσο εκτελείται μία από αυτές τις εφαρμογές." } },
+        "el" : { "stringUnit" : { "state" : "translated", "value" : "Διατήρηση ενεργοποίησης όσο εκτελείται μία από αυτές τις εφαρμογές." } },
         "es" : { "stringUnit" : { "state" : "translated", "value" : "Mantener activo mientras se ejecute una de estas aplicaciones." } },
         "fi" : { "stringUnit" : { "state" : "translated", "value" : "Pysy aktiivisena, kun jokin näistä sovelluksista on käynnissä." } },
         "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rester actif tant que l’une de ces applications est ouverte." } },
@@ -3708,7 +3708,7 @@
         "sk" : { "stringUnit" : { "state" : "translated", "value" : "Sledované priečinky stiahnutí" } },
         "tr" : { "stringUnit" : { "state" : "translated", "value" : "İzlenen İndirme Klasörleri" } },
         "uk" : { "stringUnit" : { "state" : "translated", "value" : "Відстежувані теки завантажень" } },
-        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Thư mục tải về theo dõi" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Thư mục tải về được theo dõi" } },
         "zh" : { "stringUnit" : { "state" : "translated", "value" : "监视的下载文件夹" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "監視的下載檔案夾" } }
       }
@@ -3718,7 +3718,7 @@
       "localizations" : {
         "da" : { "stringUnit" : { "state" : "translated", "value" : "Forbliv aktiv, mens en overførsel er i gang i en af disse mapper." } },
         "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktiv bleiben, solange in einem dieser Ordner ein Download läuft." } },
-        "el" : { "stringUnit" : { "state" : "translated", "value" : "Παραμονή ενεργό όσο βρίσκεται σε εξέλιξη λήψη σε έναν από αυτούς τους φακέλους." } },
+        "el" : { "stringUnit" : { "state" : "translated", "value" : "Διατήρηση ενεργοποίησης όσο βρίσκεται σε εξέλιξη λήψη σε έναν από αυτούς τους φακέλους." } },
         "es" : { "stringUnit" : { "state" : "translated", "value" : "Mantener activo mientras haya una descarga en curso en una de estas carpetas." } },
         "fi" : { "stringUnit" : { "state" : "translated", "value" : "Pysy aktiivisena, kun jossakin näistä kansioista on lataus käynnissä." } },
         "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rester actif tant qu’un téléchargement est en cours dans l’un de ces dossiers." } },
@@ -3770,7 +3770,7 @@
       "localizations" : {
         "da" : { "stringUnit" : { "state" : "translated", "value" : "Forbliv aktiv i disse ugedage og tidsrum. Hvis sluttidspunktet er før starttidspunktet, fortsætter tidsrummet over midnat til næste dag." } },
         "de" : { "stringUnit" : { "state" : "translated", "value" : "Während dieser Wochentage und Zeiträume aktiv bleiben. Liegt die Endzeit vor der Startzeit, reicht der Zeitraum über Mitternacht in den nächsten Tag." } },
-        "el" : { "stringUnit" : { "state" : "translated", "value" : "Παραμονή ενεργό κατά τις ημέρες και ώρες αυτές. Αν η ώρα λήξης είναι πριν από την ώρα έναρξης, το διάστημα συνεχίζεται μετά τα μεσάνυχτα στην επόμενη ημέρα." } },
+        "el" : { "stringUnit" : { "state" : "translated", "value" : "Διατήρηση ενεργοποίησης κατά τις ημέρες και ώρες αυτές. Αν η ώρα λήξης είναι πριν από την ώρα έναρξης, το διάστημα συνεχίζεται μετά τα μεσάνυχτα στην επόμενη ημέρα." } },
         "es" : { "stringUnit" : { "state" : "translated", "value" : "Mantener activo durante estos días y franjas horarias. Si la hora de fin es anterior a la de inicio, la franja continúa pasada la medianoche hasta el día siguiente." } },
         "fi" : { "stringUnit" : { "state" : "translated", "value" : "Pysy aktiivisena näinä viikonpäivinä ja aikoina. Jos päättymisaika on ennen alkamisaikaa, jakso jatkuu keskiyön yli seuraavaan päivään." } },
         "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rester actif pendant ces jours et plages horaires. Si l’heure de fin est antérieure à l’heure de début, la plage se prolonge après minuit jusqu’au lendemain." } },
