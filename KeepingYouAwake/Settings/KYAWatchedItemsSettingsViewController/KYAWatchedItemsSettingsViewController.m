@@ -117,6 +117,30 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 {
     [super viewWillAppear];
 
+    [self updatePreferredContentSize];
+
+    // Re-cap when the window moves to another screen or the display
+    // layout changes while this pane stays selected.
+    Auto center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self
+               selector:@selector(screenDidChange:)
+                   name:NSWindowDidChangeScreenNotification
+                 object:self.view.window];
+    [center addObserver:self
+               selector:@selector(screenDidChange:)
+                   name:NSApplicationDidChangeScreenParametersNotification
+                 object:nil];
+}
+
+- (void)screenDidChange:(NSNotification *)notification
+{
+    [self updatePreferredContentSize];
+}
+
+/// Caps the pane to the current screen's visible height so it scrolls
+/// instead of running off-screen.
+- (void)updatePreferredContentSize
+{
     NSSize content = self.documentView.fittingSize;
     NSScreen *screen = self.view.window.screen ?: NSScreen.mainScreen;
     // Leave room for the window's title bar and toolbar. The floor only
@@ -637,6 +661,9 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 - (void)viewWillDisappear
 {
     [super viewWillDisappear];
+    Auto center = NSNotificationCenter.defaultCenter;
+    [center removeObserver:self name:NSWindowDidChangeScreenNotification object:nil];
+    [center removeObserver:self name:NSApplicationDidChangeScreenParametersNotification object:nil];
     // Commit or drop an edit in progress, then clear leftover placeholders.
     [self.view.window makeFirstResponder:nil];
     [self removeEmptySSIDPlaceholders];
