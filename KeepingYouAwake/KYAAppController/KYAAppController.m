@@ -278,7 +278,7 @@
 {
     Auto defaults = NSUserDefaults.standardUserDefaults;
     BOOL enabled = [defaults kya_isScheduleEnabled];
-    NSArray *windows = defaults.kya_scheduleWindows;
+    NSArray *windows = defaults.kya_enabledScheduleWindows;
 
     if(!enabled || windows.count == 0)
     {
@@ -336,7 +336,7 @@
         monitor.delegate = self;
         self.downloadActivityMonitor = monitor;
     }
-    NSArray<NSString *> *dirs = defaults.kya_downloadDirectories ?: @[@"~/Downloads"];
+    NSArray<NSString *> *dirs = defaults.kya_enabledDownloadDirectories ?: @[@"~/Downloads"];
     [self.downloadActivityMonitor setDirectories:dirs];
     if(![self.downloadActivityMonitor isRunning])
     {
@@ -842,7 +842,7 @@
 /// they can't restart a session the user just ended.
 - (void)reconcileWatchedWiFiSSIDTrigger
 {
-    Auto ssids = NSUserDefaults.standardUserDefaults.kya_watchedWiFiSSIDs;
+    Auto ssids = NSUserDefaults.standardUserDefaults.kya_enabledWatchedWiFiSSIDs;
     Auto previous = self.reconciledWatchedSSIDs;
     if(self.hasReconciledWatchedSSIDs && (ssids == previous || [ssids isEqualToArray:previous]))
     {
@@ -916,7 +916,7 @@
 
 - (void)watchedWiFiSSIDDidChange:(nullable NSNotification *)notification
 {
-    Auto ssids = NSUserDefaults.standardUserDefaults.kya_watchedWiFiSSIDs;
+    Auto ssids = NSUserDefaults.standardUserDefaults.kya_enabledWatchedWiFiSSIDs;
     if(ssids.count == 0) { return; }
     BOOL onWatchedNetwork = [KYAWiFiMonitor.sharedMonitor isJoinedNetworkAmongSSIDs:ssids];
 
@@ -969,13 +969,13 @@
 - (BOOL)isWatchedBundleIdentifier:(NSString *)bundleIdentifier
 {
     return KYAWatchedBundleIdentifiers_Contains(
-        NSUserDefaults.standardUserDefaults.kya_watchedApplicationBundleIdentifiers,
+        NSUserDefaults.standardUserDefaults.kya_enabledWatchedApplicationBundleIdentifiers,
         bundleIdentifier);
 }
 
 - (BOOL)isAnyWatchedApplicationRunning
 {
-    Auto watched = NSUserDefaults.standardUserDefaults.kya_watchedApplicationBundleIdentifiers;
+    Auto watched = NSUserDefaults.standardUserDefaults.kya_enabledWatchedApplicationBundleIdentifiers;
     // Early-out before enumerating every running process — iterating
     // `NSWorkspace.sharedWorkspace.runningApplications` is not free.
     if(watched.count == 0) { return NO; }
@@ -996,7 +996,7 @@
 /// the user just ended.
 - (void)reconcileWatchedApplicationTrigger
 {
-    Auto watched = NSUserDefaults.standardUserDefaults.kya_watchedApplicationBundleIdentifiers;
+    Auto watched = NSUserDefaults.standardUserDefaults.kya_enabledWatchedApplicationBundleIdentifiers;
     Auto previous = self.reconciledWatchedBundleIdentifiers;
     if(self.hasReconciledWatchedBundleIdentifiers && (watched == previous || [watched isEqualToArray:previous]))
     {

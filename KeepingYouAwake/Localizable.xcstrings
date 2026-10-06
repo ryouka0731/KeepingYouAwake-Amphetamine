@@ -3765,6 +3765,58 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "打開定位服務設定…" } }
       }
     },
+    "Enabled" : {
+      "comment" : "Enabled",
+      "localizations" : {
+        "da" : { "stringUnit" : { "state" : "translated", "value" : "Aktiveret" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktiviert" } },
+        "el" : { "stringUnit" : { "state" : "translated", "value" : "Ενεργό" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Activado" } },
+        "fi" : { "stringUnit" : { "state" : "translated", "value" : "Käytössä" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Activé" } },
+        "hi" : { "stringUnit" : { "state" : "translated", "value" : "सक्षम" } },
+        "id" : { "stringUnit" : { "state" : "translated", "value" : "Aktif" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Attivo" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "有効" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "활성화됨" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Ingeschakeld" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Włączone" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Ativado" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Включено" } },
+        "sk" : { "stringUnit" : { "state" : "translated", "value" : "Zapnuté" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Etkin" } },
+        "uk" : { "stringUnit" : { "state" : "translated", "value" : "Увімкнено" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Đã bật" } },
+        "zh" : { "stringUnit" : { "state" : "translated", "value" : "已启用" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已啟用" } }
+      }
+    },
+    "Uncheck to pause this item without removing it." : {
+      "comment" : "Uncheck to pause this item without removing it.",
+      "localizations" : {
+        "da" : { "stringUnit" : { "state" : "translated", "value" : "Fjern markeringen for at sætte dette element på pause uden at fjerne det." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Deaktivieren, um diesen Eintrag zu pausieren, ohne ihn zu entfernen." } },
+        "el" : { "stringUnit" : { "state" : "translated", "value" : "Αποεπιλέξτε για παύση αυτού του στοιχείου χωρίς να αφαιρεθεί." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Desmarca para pausar este elemento sin eliminarlo." } },
+        "fi" : { "stringUnit" : { "state" : "translated", "value" : "Poista valinta keskeyttääksesi tämän kohteen poistamatta sitä." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Décochez pour suspendre cet élément sans le supprimer." } },
+        "hi" : { "stringUnit" : { "state" : "translated", "value" : "इस आइटम को हटाए बिना रोकने के लिए अनचेक करें।" } },
+        "id" : { "stringUnit" : { "state" : "translated", "value" : "Hapus centang untuk menjeda item ini tanpa menghapusnya." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Deseleziona per sospendere questo elemento senza rimuoverlo." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "チェックを外すと、削除せずにこの項目を一時的に無効にします。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "선택 해제하면 이 항목을 삭제하지 않고 일시 중지합니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Vink uit om dit onderdeel te pauzeren zonder het te verwijderen." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Odznacz, aby wstrzymać ten element bez usuwania go." } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Desmarque para pausar este item sem removê-lo." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Снимите флажок, чтобы приостановить этот элемент, не удаляя его." } },
+        "sk" : { "stringUnit" : { "state" : "translated", "value" : "Zrušte začiarknutie, ak chcete túto položku pozastaviť bez odstránenia." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Bu öğeyi kaldırmadan duraklatmak için işareti kaldırın." } },
+        "uk" : { "stringUnit" : { "state" : "translated", "value" : "Зніміть позначку, щоб призупинити цей елемент, не видаляючи його." } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Bỏ chọn để tạm dừng mục này mà không xóa nó." } },
+        "zh" : { "stringUnit" : { "state" : "translated", "value" : "取消勾选可暂停此项目而不将其移除。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "取消勾選可暫停此項目而不將其移除。" } }
+      }
+    },
     "Watched Applications" : {
       "comment" : "Watched Applications",
       "localizations" : {

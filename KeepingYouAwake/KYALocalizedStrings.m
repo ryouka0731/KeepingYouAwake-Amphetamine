@@ -88,6 +88,8 @@
 #define KYA_L10N_WATCHED_WIFI_NOT_CONNECTED NSLocalizedString(@"Not connected to a Wi-Fi network", @"Not connected to a Wi-Fi network")
 #define KYA_L10N_WATCHED_WIFI_NEEDS_LOCATION NSLocalizedString(@"Allow Location access to read the current network name", @"Allow Location access to read the current network name")
 #define KYA_L10N_WATCHED_WIFI_OPEN_LOCATION_SETTINGS NSLocalizedString(@"Open Location Services Settings…", @"Open Location Services Settings…")
+#define KYA_L10N_WATCHED_ITEM_ENABLED NSLocalizedString(@"Enabled", @"Enabled")
+#define KYA_L10N_WATCHED_ITEM_TOGGLE_TOOLTIP NSLocalizedString(@"Uncheck to pause this item without removing it.", @"Uncheck to pause this item without removing it.")
 
 #pragma mark - Schedule Windows
 
