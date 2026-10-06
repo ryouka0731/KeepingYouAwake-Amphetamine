@@ -7,6 +7,7 @@
 //
 
 #import "KYAAboutSettingsViewController.h"
+#import <KYACommon/KYACommon.h>
 #import "KYALocalizedStrings.h"
 
 @interface KYAAboutSettingsViewController ()
@@ -48,7 +49,14 @@
 
 - (id)creditsFileURL
 {
-    return [NSBundle.mainBundle URLForResource:@"Credits" withExtension:@"rtf"];
+    // Credits.rtf is not a localized resource; Japanese gets its own copy.
+    Auto bundle = NSBundle.mainBundle;
+    if([bundle.preferredLocalizations.firstObject hasPrefix:@"ja"])
+    {
+        Auto japanese = [bundle URLForResource:@"Credits-ja" withExtension:@"rtf"];
+        if(japanese != nil) { return japanese; }
+    }
+    return [bundle URLForResource:@"Credits" withExtension:@"rtf"];
 }
 
 - (BOOL)isEditable

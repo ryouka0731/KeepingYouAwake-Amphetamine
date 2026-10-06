@@ -70,7 +70,9 @@
 		DA82560D22FB5AFC005ECB3A /* KYAActivationDurationsMenuController.m in Sources */ = {isa = PBXBuildFile; fileRef = DA82560C22FB5AFC005ECB3A /* KYAActivationDurationsMenuController.m */; };
 		DA82B1161C2426E400FA46E0 /* KYAGeneralSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = DA82B1151C2426E400FA46E0 /* KYAGeneralSettingsViewController.m */; };
 		DA898C6F2A3EEE460005A48A /* Credits.rtf in Resources */ = {isa = PBXBuildFile; fileRef = DA898C6E2A3EEE460005A48A /* Credits.rtf */; };
+		AD0652E08FF231EFFC32BF0C /* Credits-ja.rtf in Resources */ = {isa = PBXBuildFile; fileRef = 5F3C592BDEC272F9A8248EAD /* Credits-ja.rtf */; };
 		DA898C702A3EEE460005A48A /* Credits.rtf in Resources */ = {isa = PBXBuildFile; fileRef = DA898C6E2A3EEE460005A48A /* Credits.rtf */; };
+		5B80D13953674406F591063F /* Credits-ja.rtf in Resources */ = {isa = PBXBuildFile; fileRef = 5F3C592BDEC272F9A8248EAD /* Credits-ja.rtf */; };
 		DA898C732A3EEE8D0005A48A /* KYASettingsWindow.m in Sources */ = {isa = PBXBuildFile; fileRef = DA898C722A3EEE8D0005A48A /* KYASettingsWindow.m */; };
 		DA898C742A3EEE8D0005A48A /* KYASettingsWindow.m in Sources */ = {isa = PBXBuildFile; fileRef = DA898C722A3EEE8D0005A48A /* KYASettingsWindow.m */; };
 		DA8AF45F2E50594C00EBD156 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = DA8AF45E2E50594C00EBD156 /* AppIcon.icon */; };
@@ -262,6 +264,7 @@
 		DA82B1141C2426E400FA46E0 /* KYAGeneralSettingsViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KYAGeneralSettingsViewController.h; sourceTree = "<group>"; };
 		DA82B1151C2426E400FA46E0 /* KYAGeneralSettingsViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KYAGeneralSettingsViewController.m; sourceTree = "<group>"; };
 		DA898C6E2A3EEE460005A48A /* Credits.rtf */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.rtf; path = Credits.rtf; sourceTree = SOURCE_ROOT; };
+		5F3C592BDEC272F9A8248EAD /* Credits-ja.rtf */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.rtf; path = "Credits-ja.rtf"; sourceTree = SOURCE_ROOT; };
 		DA898C712A3EEE8D0005A48A /* KYASettingsWindow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KYASettingsWindow.h; sourceTree = "<group>"; };
 		DA898C722A3EEE8D0005A48A /* KYASettingsWindow.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KYASettingsWindow.m; sourceTree = "<group>"; };
 		DA898C762A3EF6080005A48A /* KYASettingsLocalizedStrings.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KYASettingsLocalizedStrings.m; sourceTree = "<group>"; };
@@ -621,6 +624,7 @@
 				DAE9C00D26107E1A00F9ED76 /* Configuration.xcconfig */,
 				DA085D0F21D6BAB6003D9B1B /* container-migration.plist */,
 				DA898C6E2A3EEE460005A48A /* Credits.rtf */,
+				5F3C592BDEC272F9A8248EAD /* Credits-ja.rtf */,
 				DA637B3D19F14693004C8838 /* Info.plist */,
 				DAD90B5627B001B800F5C186 /* KeepingYouAwake-Direct.entitlements */,
 				DA0CA9FE21D0111600879C8B /* KeepingYouAwake.entitlements */,
@@ -842,6 +846,7 @@
 				DA4835F026F8CF100073A062 /* KYAAdvancedSettingsViewController.xib in Resources */,
 				DA4F7F472A3F218D00C7C076 /* KYASettings.xcstrings in Resources */,
 				DA898C6F2A3EEE460005A48A /* Credits.rtf in Resources */,
+				AD0652E08FF231EFFC32BF0C /* Credits-ja.rtf in Resources */,
 				DAD9834926F8A9AE00234FB8 /* KYAAboutSettingsViewController.xib in Resources */,
 				DA085D1021D6BAB6003D9B1B /* container-migration.plist in Resources */,
 				DAD983A726F9C46600234FB8 /* KYAAddDurationViewController.xib in Resources */,
@@ -876,6 +881,7 @@
 				DAD3CF73271186720006CA14 /* KYAAdvancedSettingsViewController.xib in Resources */,
 				DA4F7F482A3F218D00C7C076 /* KYASettings.xcstrings in Resources */,
 				DA898C702A3EEE460005A48A /* Credits.rtf in Resources */,
+				5B80D13953674406F591063F /* Credits-ja.rtf in Resources */,
 				DAD3CF78271186720006CA14 /* KYAAboutSettingsViewController.xib in Resources */,
 				DAD3CF7A271186720006CA14 /* container-migration.plist in Resources */,
 				DAD3CF7B271186720006CA14 /* KYAAddDurationViewController.xib in Resources */,
