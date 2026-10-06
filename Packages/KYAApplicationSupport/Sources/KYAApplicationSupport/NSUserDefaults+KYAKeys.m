@@ -297,15 +297,21 @@ NSString * const KYAUserDefaultsKeyDisabledDownloadDirectories = @"info.marcel-d
     }
 }
 
-/// `items` without the entries in `disabled` (exact match).
-static NSArray<NSString *> *KYAEnabledItems(NSArray<NSString *> *items, NSArray<NSString *> *disabled)
+/// `items` without the entries in `disabled`. `ignoringCase` matches the
+/// way the trigger itself compares entries (SSIDs and bundle identifiers
+/// case-insensitively, folder paths exactly).
+static NSArray<NSString *> *KYAEnabledItems(NSArray<NSString *> *items, NSArray<NSString *> *disabled, BOOL ignoringCase)
 {
     if(disabled.count == 0) { return items; }
-    Auto off = [NSSet setWithArray:disabled];
+    Auto off = [NSMutableSet<NSString *> setWithCapacity:disabled.count];
+    for(NSString *entry in disabled)
+    {
+        [off addObject:ignoringCase ? entry.lowercaseString : entry];
+    }
     Auto enabled = [NSMutableArray<NSString *> arrayWithCapacity:items.count];
     for(NSString *item in items)
     {
-        if(![off containsObject:item]) { [enabled addObject:item]; }
+        if(![off containsObject:ignoringCase ? item.lowercaseString : item]) { [enabled addObject:item]; }
     }
     return [enabled copy];
 }
@@ -342,14 +348,14 @@ static NSArray<NSString *> *KYAEnabledItems(NSArray<NSString *> *items, NSArray<
 
 - (NSArray<NSString *> *)kya_enabledWatchedWiFiSSIDs
 {
-    Auto enabled = KYAEnabledItems(self.kya_watchedWiFiSSIDs, self.kya_disabledWatchedWiFiSSIDs);
+    Auto enabled = KYAEnabledItems(self.kya_watchedWiFiSSIDs, self.kya_disabledWatchedWiFiSSIDs, YES);
     return (enabled.count > 0) ? enabled : nil;
 }
 
 - (NSArray<NSString *> *)kya_enabledWatchedApplicationBundleIdentifiers
 {
     Auto enabled = KYAEnabledItems(self.kya_watchedApplicationBundleIdentifiers,
-                                   self.kya_disabledWatchedApplicationBundleIdentifiers);
+                                   self.kya_disabledWatchedApplicationBundleIdentifiers, YES);
     return (enabled.count > 0) ? enabled : nil;
 }
 
@@ -357,7 +363,7 @@ static NSArray<NSString *> *KYAEnabledItems(NSArray<NSString *> *items, NSArray<
 {
     Auto directories = self.kya_downloadDirectories;
     if(directories == nil) { return nil; }
-    return KYAEnabledItems(directories, self.kya_disabledDownloadDirectories);
+    return KYAEnabledItems(directories, self.kya_disabledDownloadDirectories, NO);
 }
 
 - (NSArray<NSDictionary<NSString *, id> *> *)kya_enabledScheduleWindows

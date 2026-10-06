@@ -321,8 +321,10 @@
 {
     Auto defaults = NSUserDefaults.standardUserDefaults;
     BOOL enabled = [defaults kya_isDownloadInProgressActivationEnabled];
+    // Unset means ~/Downloads; an empty list means every folder is switched off.
+    NSArray<NSString *> *dirs = defaults.kya_enabledDownloadDirectories ?: @[@"~/Downloads"];
 
-    if(!enabled)
+    if(!enabled || dirs.count == 0)
     {
         [self.downloadActivityMonitor stop];
         self.downloadActivityMonitor = nil;
@@ -336,7 +338,6 @@
         monitor.delegate = self;
         self.downloadActivityMonitor = monitor;
     }
-    NSArray<NSString *> *dirs = defaults.kya_enabledDownloadDirectories ?: @[@"~/Downloads"];
     [self.downloadActivityMonitor setDirectories:dirs];
     if(![self.downloadActivityMonitor isRunning])
     {

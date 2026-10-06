@@ -570,9 +570,48 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
     }
 }
 
+/// Switched-off entries match the way the trigger compares entries:
+/// SSIDs and bundle identifiers ignoring case, folder paths exactly.
+- (BOOL)switchedOffEntry:(NSString *)entry matchesItem:(NSString *)item kind:(KYAWatchedItemsListKind)kind
+{
+    if(kind == KYAWatchedItemsListKindDownloadDirectories) { return [entry isEqualToString:item]; }
+    return [entry caseInsensitiveCompare:item] == NSOrderedSame;
+}
+
 - (BOOL)isItemEnabled:(NSString *)item kind:(KYAWatchedItemsListKind)kind
 {
-    return item.length == 0 || ![[self disabledItemsForKind:kind] containsObject:item];
+    if(item.length == 0) { return YES; }
+    for(NSString *entry in [self disabledItemsForKind:kind])
+    {
+        if([self switchedOffEntry:entry matchesItem:item kind:kind]) { return NO; }
+    }
+    return YES;
+}
+
+/// Removes the switched-off entries that match `item`.
+- (void)removeSwitchedOffEntriesMatchingItem:(NSString *)item kind:(KYAWatchedItemsListKind)kind
+{
+    Auto disabled = [self disabledItemsForKind:kind];
+    for(NSString *entry in disabled.allObjects)
+    {
+        if([self switchedOffEntry:entry matchesItem:item kind:kind]) { [disabled removeObject:entry]; }
+    }
+}
+
+/// Drops switched-off entries that no longer match any listed item.
+- (void)pruneSwitchedOffEntriesForKind:(KYAWatchedItemsListKind)kind
+{
+    Auto disabled = [self disabledItemsForKind:kind];
+    Auto model = [self modelForKind:kind];
+    for(NSString *entry in disabled.allObjects)
+    {
+        BOOL listed = NO;
+        for(NSString *item in model)
+        {
+            if(item.length > 0 && [self switchedOffEntry:entry matchesItem:item kind:kind]) { listed = YES; break; }
+        }
+        if(!listed) { [disabled removeObject:entry]; }
+    }
 }
 
 - (NSTableView *)tableViewForKind:(KYAWatchedItemsListKind)kind
@@ -605,7 +644,7 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
 
     [self persistListForKind:kind];
 
-    [disabled intersectSet:[NSSet setWithArray:[self modelForKind:kind]]];
+    [self pruneSwitchedOffEntriesForKind:kind];
     [self writeDisabledItems:disabled.allObjects forKind:kind];
 }
 
@@ -614,17 +653,22 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
     Auto defaults = NSUserDefaults.standardUserDefaults;
     switch(kind)
     {
+        // Every write re-evaluates the triggers; skip one that changes
+        // nothing (e.g. only an on/off checkbox was clicked).
         case KYAWatchedItemsListKindWiFiSSIDs:
         {
             // Never persist an in-progress placeholder row.
             NSArray<NSString *> *ssids = [self.ssids filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]];
+            if([ssids isEqualToArray:defaults.kya_watchedWiFiSSIDs ?: @[]]) { break; }
             defaults.kya_watchedWiFiSSIDs = (ssids.count > 0) ? ssids : nil;
         }
             break;
         case KYAWatchedItemsListKindApplications:
+            if([self.bundleIdentifiers isEqualToArray:defaults.kya_watchedApplicationBundleIdentifiers ?: @[]]) { break; }
             defaults.kya_watchedApplicationBundleIdentifiers = (self.bundleIdentifiers.count > 0) ? [self.bundleIdentifiers copy] : nil;
             break;
         case KYAWatchedItemsListKindDownloadDirectories:
+            if([self.directories isEqualToArray:defaults.kya_downloadDirectories ?: @[]]) { break; }
             defaults.kya_downloadDirectories = (self.directories.count > 0) ? [self.directories copy] : nil;
             break;
         case KYAWatchedItemsListKindScheduleWindows:
@@ -950,9 +994,7 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
     Auto model = [self modelForKind:kind];
     if(selectedRow < 0 || selectedRow >= (NSInteger)model.count) { return; }
 
-    Auto removed = model[(NSUInteger)selectedRow];
     [model removeObjectAtIndex:(NSUInteger)selectedRow];
-    if(![model containsObject:removed]) { [[self disabledItemsForKind:kind] removeObject:removed]; }
     [self persistModelForKind:kind];
     [tableView reloadData];
     [self updateRemoveButtonsEnabledState];
@@ -1079,7 +1121,7 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
     if(item.length == 0) { return; }
     if(enabled)
     {
-        [[self disabledItemsForKind:kind] removeObject:item];
+        [self removeSwitchedOffEntriesMatchingItem:item kind:kind];
     }
     else
     {
@@ -1135,7 +1177,6 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
         // Empty input, or a freshly-added placeholder row resolved to a
         // duplicate — discard the row.
         [self.ssids removeObjectAtIndex:(NSUInteger)row];
-        if(![self.ssids containsObject:previousValue]) { [self.disabledSSIDs removeObject:previousValue]; }
     }
     else if(isDuplicate)
     {
@@ -1149,9 +1190,9 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
     {
         self.ssids[(NSUInteger)row] = valueToStore;
         // A renamed entry keeps its on/off state.
-        if([self.disabledSSIDs containsObject:previousValue])
+        if(![self isItemEnabled:previousValue kind:KYAWatchedItemsListKindWiFiSSIDs])
         {
-            [self.disabledSSIDs removeObject:previousValue];
+            [self removeSwitchedOffEntriesMatchingItem:previousValue kind:KYAWatchedItemsListKindWiFiSSIDs];
             [self.disabledSSIDs addObject:valueToStore];
         }
     }
@@ -1168,15 +1209,23 @@ static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
     [self updateRemoveButtonsEnabledState];
 }
 
-/// Dims switched-off entries.
+/// Dims switched-off entries; the checkbox of an SSID still being typed
+/// can't be used yet.
 - (void)tableView:(NSTableView *)tableView willDisplayCell:(id)cell forTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row
 {
-    if(![tableColumn.identifier isEqualToString:KYAWatchedItemsValueColumnIdentifier]) { return; }
-    if(![cell isKindOfClass:[NSTextFieldCell class]]) { return; }
     Auto kind = (KYAWatchedItemsListKind)tableView.tag;
     Auto model = [self modelForKind:kind];
-    BOOL enabled = (row < 0 || row >= (NSInteger)model.count) || [self isItemEnabled:model[(NSUInteger)row] kind:kind];
-    ((NSTextFieldCell *)cell).textColor = enabled ? NSColor.controlTextColor : NSColor.disabledControlTextColor;
+    if(row < 0 || row >= (NSInteger)model.count) { return; }
+    Auto item = model[(NSUInteger)row];
+    if([tableColumn.identifier isEqualToString:KYAWatchedItemsEnabledColumnIdentifier] && [cell isKindOfClass:[NSButtonCell class]])
+    {
+        ((NSButtonCell *)cell).enabled = (item.length > 0);
+    }
+    else if([tableColumn.identifier isEqualToString:KYAWatchedItemsValueColumnIdentifier] && [cell isKindOfClass:[NSTextFieldCell class]])
+    {
+        BOOL enabled = [self isItemEnabled:item kind:kind];
+        ((NSTextFieldCell *)cell).textColor = enabled ? NSColor.controlTextColor : NSColor.disabledControlTextColor;
+    }
 }
 
 - (NSString *)tableView:(NSTableView *)tableView toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row mouseLocation:(NSPoint)mouseLocation

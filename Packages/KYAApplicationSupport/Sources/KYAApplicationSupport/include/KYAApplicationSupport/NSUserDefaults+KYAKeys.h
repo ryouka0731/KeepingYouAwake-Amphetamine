@@ -164,7 +164,9 @@ KYA_EXPORT NSString * const KYAUserDefaultsKeyCPULoadActivationThreshold;
 
 /// Entries of `kya_watchedWiFiSSIDs`, `kya_watchedApplicationBundleIdentifiers`
 /// and `kya_downloadDirectories` that stay in the list but are switched off
-/// (Watched Items checkboxes). Matched by exact string. A schedule window
+/// (Watched Items checkboxes). Matched the way each trigger compares
+/// entries: SSIDs and bundle identifiers ignoring case (whitespace still
+/// counts), folder paths exactly. A schedule window
 /// is switched off with `KYAScheduleWindowKeyEnabled` = NO instead.
 @property (copy, nonatomic, nullable) NSArray<NSString *> *kya_disabledWatchedWiFiSSIDs;
 @property (copy, nonatomic, nullable) NSArray<NSString *> *kya_disabledWatchedApplicationBundleIdentifiers;

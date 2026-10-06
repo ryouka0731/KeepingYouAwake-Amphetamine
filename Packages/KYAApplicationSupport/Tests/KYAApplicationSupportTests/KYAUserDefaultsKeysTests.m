@@ -239,13 +239,33 @@ KYA_GENERATE_BOOL_TEST(isMenuBarCountdownDisabled,
     XCTAssertNil(defaults.kya_enabledWatchedWiFiSSIDs);
 }
 
-- (void)testEnabledWatchedWiFiSSIDs_matchesExactly
+- (void)testEnabledWatchedWiFiSSIDs_ignoresCaseButNotWhitespace
 {
+    // The Wi-Fi trigger matches SSIDs ignoring case, so switching one off
+    // must too; surrounding spaces are part of an SSID.
     [self clearWatchedItemKeys];
     Auto defaults = self.defaults;
     defaults.kya_watchedWiFiSSIDs = @[@"Office ", @"office"];
     defaults.kya_disabledWatchedWiFiSSIDs = @[@"Office"];
-    XCTAssertEqualObjects(defaults.kya_enabledWatchedWiFiSSIDs, (@[@"Office ", @"office"]));
+    XCTAssertEqualObjects(defaults.kya_enabledWatchedWiFiSSIDs, (@[@"Office "]));
+}
+
+- (void)testEnabledWatchedApplications_ignoresCase
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_watchedApplicationBundleIdentifiers = @[@"com.apple.logic", @"com.apple.FinalCut"];
+    defaults.kya_disabledWatchedApplicationBundleIdentifiers = @[@"com.apple.Logic"];
+    XCTAssertEqualObjects(defaults.kya_enabledWatchedApplicationBundleIdentifiers, (@[@"com.apple.FinalCut"]));
+}
+
+- (void)testEnabledDownloadDirectories_matchesPathsExactly
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_downloadDirectories = @[@"~/downloads", @"~/Downloads"];
+    defaults.kya_disabledDownloadDirectories = @[@"~/Downloads"];
+    XCTAssertEqualObjects(defaults.kya_enabledDownloadDirectories, (@[@"~/downloads"]));
 }
 
 - (void)testEnabledWatchedApplications_excludesSwitchedOffEntries
