@@ -6,7 +6,7 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-(no changes since v1.7.0-amphetamine.8 — add new entries here.)
+- **App icon**: released builds had no app icon (Finder / Dock showed a generic one). `AppIcon.icon` (Icon Composer) is only compiled by Xcode 26, while releases build with Xcode 16. The app now also ships `AppIcon.icns` rendered from the same artwork (`scripts/render-app-icon.swift`); Xcode 26 builds still prefer the Icon Composer icon. CI fails if a built app has no icon.
 
 ### v1.7.0-amphetamine.8 (2026-10-06)
 
