@@ -329,6 +329,9 @@ jobs:
           fi
           echo "Found app at $APP"
 
+          # The app must ship an icon (see scripts/check-app-icon.sh).
+          scripts/check-app-icon.sh "$APP"
+
           # Register the app with LaunchServices so the URL scheme resolves
           /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
             -f "$APP"
