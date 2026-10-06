@@ -6,11 +6,20 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-- **Security**: Sparkle 2.6.4 → 2.9.6, fixing GHSA-hg88-v3cw-3qrh (delta-update symlink traversal) and GHSA-g3hp-f6mg-559v (installer XPC listener accepted unvalidated connections). Capped to 2.9.x: Sparkle 2.10 requires macOS 12, above this app's macOS 10.13 minimum.
-- CI also builds the "(Direct)" scheme that releases ship, so Sparkle/updater breakage fails the PR instead of the release.
-- **Watched Items settings**: watched Wi-Fi networks can be added again, and the application / download-folder lists show their entries. Since the Active Hours editor (#89), all four lists shared a delegate that made them view-based, so the cell-based rows rendered empty and couldn't be edited.
-- **Watched Items settings**: the pane scrolls when it is taller than the screen allows, instead of running off-screen.
-- **Watched Items settings**: translated into all 21 app languages (it was English-only).
+(no changes since v1.7.0-amphetamine.7 — add new entries here.)
+
+### v1.7.0-amphetamine.7 (2026-10-06)
+
+#### Security
+- Sparkle 2.6.4 → 2.9.6, fixing [GHSA-hg88-v3cw-3qrh](https://github.com/advisories/GHSA-hg88-v3cw-3qrh) (delta-update symlink traversal) and [GHSA-g3hp-f6mg-559v](https://github.com/advisories/GHSA-g3hp-f6mg-559v) (installer XPC listener accepted unvalidated connections). Capped to 2.9.x: Sparkle 2.10 requires macOS 12, above this app's macOS 10.13 minimum. [#107](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/107)
+
+#### Fixes
+- **Watched Items settings**: watched Wi-Fi networks can be added again, and the application / download-folder lists show their entries. Since the Active Hours editor (#89), all four lists shared a delegate that made them view-based, so the rows rendered empty and couldn't be edited. [#108](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/108)
+- **Watched Items settings**: the pane scrolls when it is taller than the screen allows, instead of running off-screen. [#108](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/108)
+- **Watched Items settings**: translated into all 21 app languages (it was English-only). [#108](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/108)
+
+#### Infra
+- CI also builds the "(Direct)" scheme that releases ship, so Sparkle/updater breakage fails the PR instead of the release. [#107](https://github.com/ryouka0731/KeepingYouAwake-Amphetamine/pull/107)
 
 ### v1.7.0-amphetamine.6 (2026-10-06)
 
