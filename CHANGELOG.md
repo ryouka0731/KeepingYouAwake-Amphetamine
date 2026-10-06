@@ -8,6 +8,7 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 - Turning **Mouse Jiggler** or **Drive Alive** on or off in Settings now applies to the running session immediately. Before, turning the jiggler off kept moving the pointer until the session ended.
 - Advanced settings: **Reset to Default** updates the checkboxes right away (upstream bug).
+- CI hardening (OpenSSF Scorecard): workflows default to read-only tokens with write access scoped to the jobs that need it; every action is pinned to a commit SHA and moved to its Node 24 major; Dependabot keeps the pins current; `SECURITY.md` points to private vulnerability reporting.
 
 ### v1.7.0-amphetamine.7 (2026-10-06)
 
