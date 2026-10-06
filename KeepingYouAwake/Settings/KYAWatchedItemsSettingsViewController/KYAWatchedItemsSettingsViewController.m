@@ -553,14 +553,22 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 - (BOOL)addString:(NSString *)string toKind:(KYAWatchedItemsListKind)kind
 {
     Auto trimmed = [string stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if(trimmed.length == 0) { return NO; }
+    return [self addExactString:trimmed toKind:kind];
+}
+
+/// Like -addString:toKind: but stores `string` as is. For values read from
+/// the system (the joined SSID), where surrounding spaces are part of the
+/// name and trimming would stop it from ever matching.
+- (BOOL)addExactString:(NSString *)string toKind:(KYAWatchedItemsListKind)kind
+{
+    if(string.length == 0) { return NO; }
 
     Auto model = [self modelForKind:kind];
     for(NSString *existing in model)
     {
-        if([existing caseInsensitiveCompare:trimmed] == NSOrderedSame) { return NO; }
+        if([existing caseInsensitiveCompare:string] == NSOrderedSame) { return NO; }
     }
-    [model addObject:trimmed];
+    [model addObject:string];
     [self persistModelForKind:kind];
     [[self tableViewForKind:kind] reloadData];
     [self updateRemoveButtonsEnabledState];
@@ -654,6 +662,16 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
         item.enabled = NO;
         [menu addItem:item];
     }
+    else if([self locationAuthorizationStatus] == kCLAuthorizationStatusNotDetermined)
+    {
+        // The system prompt is only shown when asked for: prompting on our
+        // own would steal focus from a manual entry started from this menu.
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_NEEDS_LOCATION
+                                               action:@selector(requestLocationAccessFromMenuItem:)
+                                        keyEquivalent:@""];
+        item.target = self;
+        [menu addItem:item];
+    }
     else
     {
         Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_NEEDS_LOCATION action:nil keyEquivalent:@""];
@@ -664,8 +682,6 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
                                                 keyEquivalent:@""];
         settingsItem.target = self;
         [menu addItem:settingsItem];
-        // Shows the system prompt if the user has not been asked yet.
-        [self requestLocationAuthorizationIfNeeded];
     }
 
     [menu addItem:NSMenuItem.separatorItem];
@@ -694,7 +710,7 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     if(![ssid isKindOfClass:NSString.class]) { return; }
     // Drop a placeholder an aborted manual entry may have left behind.
     [self removeEmptySSIDPlaceholders];
-    if([self addString:ssid toKind:KYAWatchedItemsListKindWiFiSSIDs])
+    if([self addExactString:ssid toKind:KYAWatchedItemsListKindWiFiSSIDs])
     {
         Auto row = (NSInteger)(self.ssids.count - 1);
         [self.ssidTableView scrollRowToVisible:row];
@@ -741,6 +757,12 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
             [self.locationManager requestWhenInUseAuthorization];
         }
     }
+}
+
+/// The joined network is offered on the next "+" once access is granted.
+- (void)requestLocationAccessFromMenuItem:(NSMenuItem *)sender
+{
+    [self requestLocationAuthorizationIfNeeded];
 }
 
 - (void)openLocationServicesSettings:(NSMenuItem *)sender
