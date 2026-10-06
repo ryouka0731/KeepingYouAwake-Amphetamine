@@ -119,8 +119,9 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 
     NSSize content = self.documentView.fittingSize;
     NSScreen *screen = self.view.window.screen ?: NSScreen.mainScreen;
-    // Leave room for the window's title bar and toolbar.
-    CGFloat maximumHeight = MAX(320.0, NSHeight(screen.visibleFrame) - 160.0);
+    // Leave room for the window's title bar and toolbar. The floor only
+    // guards a degenerate screen; it stays below any real visible frame.
+    CGFloat maximumHeight = MAX(120.0, NSHeight(screen.visibleFrame) - 160.0);
     CGFloat height = MIN(content.height, maximumHeight);
     CGFloat width = content.width;
     NSScrollView *scrollView = (NSScrollView *)self.view;
