@@ -6,7 +6,12 @@ This fork ([`ryouka0731/KeepingYouAwake-Amphetamine`](https://github.com/ryouka0
 
 ### Unreleased
 
-(no changes since v1.7.0-amphetamine.9 — add new entries here.)
+#### Changes
+- Watched Items: **+** under Wi-Fi networks now opens a menu that adds the network the Mac is joined to, so the SSID no longer has to be typed exactly. Typing a name is still available there for other networks. When the name can't be read, the menu says why: no Wi-Fi network joined, or (macOS 14+) Location access not granted, with a shortcut to the Location Services settings.
+
+#### Fixes
+- About: Japanese, Chinese and other non-Latin text in the credits rendered garbled or went missing (the Japanese line of the fork description was dropped). `Credits.rtf` declared a Western (cp1252) encoding but held raw UTF-8 for that text; it now stores it as RTF Unicode escapes.
+- About is now in Japanese for Japanese users: the tab title, the copyright line, and the credits (`Credits-ja.rtf`).
 
 ### v1.7.0-amphetamine.9 (2026-10-06)
 

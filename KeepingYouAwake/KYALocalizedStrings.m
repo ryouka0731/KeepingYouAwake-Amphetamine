@@ -83,6 +83,11 @@
 #define KYA_L10N_WATCHED_ITEMS_CHOOSE_FOLDER NSLocalizedString(@"Choose Folder", @"Choose Folder")
 #define KYA_L10N_WATCHED_ITEMS_NO_BUNDLE_IDENTIFIER_TITLE NSLocalizedString(@"Could Not Add Application", @"Could Not Add Application")
 #define KYA_L10N_WATCHED_ITEMS_NO_BUNDLE_IDENTIFIER_MESSAGE NSLocalizedString(@"The selected item does not have a bundle identifier.", @"The selected item does not have a bundle identifier.")
+#define KYA_L10N_WATCHED_WIFI_ADD_CURRENT_NETWORK(_ssid) [NSString stringWithFormat:NSLocalizedString(@"Add Current Network: %@", @"Add Current Network: %@"), (NSString *)(_ssid)]
+#define KYA_L10N_WATCHED_WIFI_ENTER_NETWORK_NAME NSLocalizedString(@"Enter Network Name…", @"Enter Network Name…")
+#define KYA_L10N_WATCHED_WIFI_NOT_CONNECTED NSLocalizedString(@"Not connected to a Wi-Fi network", @"Not connected to a Wi-Fi network")
+#define KYA_L10N_WATCHED_WIFI_NEEDS_LOCATION NSLocalizedString(@"Allow Location access to read the current network name", @"Allow Location access to read the current network name")
+#define KYA_L10N_WATCHED_WIFI_OPEN_LOCATION_SETTINGS NSLocalizedString(@"Open Location Services Settings…", @"Open Location Services Settings…")
 
 #pragma mark - Schedule Windows
 

@@ -8,7 +8,9 @@
 #import "KYAWatchedItemsSettingsViewController.h"
 #import <KYACommon/KYACommon.h>
 #import <KYAApplicationSupport/KYAApplicationSupport.h>
+#import <KYADeviceInfo/KYADeviceInfo.h>
 #import "KYALocalizedStrings.h"
+@import CoreLocation;
 
 #if __has_include(<UniformTypeIdentifiers/UniformTypeIdentifiers.h>)
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -54,6 +56,10 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 @property (nonatomic) NSMutableArray<NSString *> *ssids;
 @property (nonatomic) NSMutableArray<NSString *> *bundleIdentifiers;
 @property (nonatomic) NSMutableArray<NSString *> *directories;
+
+/// Asks for the Location authorization macOS 14+ requires before an app
+/// may read the joined Wi-Fi network's name.
+@property (nonatomic, nullable) CLLocationManager *locationManager;
 
 /// Each entry is a mutable copy of a `kya_scheduleWindows` dictionary:
 /// keys `KYAScheduleWindowKeyWeekdays` (NSArray<NSNumber*> of 1..7),
@@ -547,14 +553,22 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 - (BOOL)addString:(NSString *)string toKind:(KYAWatchedItemsListKind)kind
 {
     Auto trimmed = [string stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if(trimmed.length == 0) { return NO; }
+    return [self addExactString:trimmed toKind:kind];
+}
+
+/// Like -addString:toKind: but stores `string` as is. For values read from
+/// the system (the joined SSID), where surrounding spaces are part of the
+/// name and trimming would stop it from ever matching.
+- (BOOL)addExactString:(NSString *)string toKind:(KYAWatchedItemsListKind)kind
+{
+    if(string.length == 0) { return NO; }
 
     Auto model = [self modelForKind:kind];
     for(NSString *existing in model)
     {
-        if([existing caseInsensitiveCompare:trimmed] == NSOrderedSame) { return NO; }
+        if([existing caseInsensitiveCompare:string] == NSOrderedSame) { return NO; }
     }
-    [model addObject:trimmed];
+    [model addObject:string];
     [self persistModelForKind:kind];
     [[self tableViewForKind:kind] reloadData];
     [self updateRemoveButtonsEnabledState];
@@ -566,7 +580,11 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 - (void)segmentedControlAction:(NSSegmentedControl *)sender
 {
     Auto kind = (KYAWatchedItemsListKind)sender.tag;
-    if(sender.selectedSegment == 0)
+    if(sender.selectedSegment == 0 && kind == KYAWatchedItemsListKindWiFiSSIDs)
+    {
+        [self presentSSIDAddMenuFromControl:sender];
+    }
+    else if(sender.selectedSegment == 0)
     {
         [self addItemForKind:kind];
     }
@@ -611,6 +629,146 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     [self.scheduleTableView scrollRowToVisible:row];
     [self.scheduleTableView selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
     [self updateRemoveButtonsEnabledState];
+}
+
+#pragma mark - Wi-Fi Networks
+
+/// "+" for Wi-Fi offers the joined network first: an SSID typed by hand
+/// must match exactly, which is easy to get wrong. Typing stays available
+/// for networks the Mac is not joined to right now.
+- (void)presentSSIDAddMenuFromControl:(NSSegmentedControl *)control
+{
+    Auto menu = [NSMenu new];
+    menu.autoenablesItems = NO;
+
+    NSString *currentSSID = KYAWiFiMonitor.sharedMonitor.currentSSID;
+    if(currentSSID.length > 0)
+    {
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_ADD_CURRENT_NETWORK(currentSSID)
+                                               action:@selector(addCurrentSSIDFromMenuItem:)
+                                        keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = currentSSID;
+        if([self containsSSID:currentSSID])
+        {
+            item.state = NSControlStateValueOn;
+            item.enabled = NO;
+        }
+        [menu addItem:item];
+    }
+    else if([self isLocationAccessGranted])
+    {
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_NOT_CONNECTED action:nil keyEquivalent:@""];
+        item.enabled = NO;
+        [menu addItem:item];
+    }
+    else if([self locationAuthorizationStatus] == kCLAuthorizationStatusNotDetermined)
+    {
+        // The system prompt is only shown when asked for: prompting on our
+        // own would steal focus from a manual entry started from this menu.
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_NEEDS_LOCATION
+                                               action:@selector(requestLocationAccessFromMenuItem:)
+                                        keyEquivalent:@""];
+        item.target = self;
+        [menu addItem:item];
+    }
+    else
+    {
+        Auto item = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_NEEDS_LOCATION action:nil keyEquivalent:@""];
+        item.enabled = NO;
+        [menu addItem:item];
+        Auto settingsItem = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_OPEN_LOCATION_SETTINGS
+                                                       action:@selector(openLocationServicesSettings:)
+                                                keyEquivalent:@""];
+        settingsItem.target = self;
+        [menu addItem:settingsItem];
+    }
+
+    [menu addItem:NSMenuItem.separatorItem];
+    Auto enterItem = [[NSMenuItem alloc] initWithTitle:KYA_L10N_WATCHED_WIFI_ENTER_NETWORK_NAME
+                                                action:@selector(enterSSIDFromMenuItem:)
+                                         keyEquivalent:@""];
+    enterItem.target = self;
+    [menu addItem:enterItem];
+
+    Auto y = control.isFlipped ? NSHeight(control.bounds) + 4.0 : -4.0;
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0.0, y) inView:control];
+}
+
+- (BOOL)containsSSID:(NSString *)ssid
+{
+    for(NSString *existing in self.ssids)
+    {
+        if([existing caseInsensitiveCompare:ssid] == NSOrderedSame) { return YES; }
+    }
+    return NO;
+}
+
+- (void)addCurrentSSIDFromMenuItem:(NSMenuItem *)sender
+{
+    NSString *ssid = sender.representedObject;
+    if(![ssid isKindOfClass:NSString.class]) { return; }
+    // Drop a placeholder an aborted manual entry may have left behind.
+    [self removeEmptySSIDPlaceholders];
+    if([self addExactString:ssid toKind:KYAWatchedItemsListKindWiFiSSIDs])
+    {
+        Auto row = (NSInteger)(self.ssids.count - 1);
+        [self.ssidTableView scrollRowToVisible:row];
+    }
+}
+
+- (void)enterSSIDFromMenuItem:(NSMenuItem *)sender
+{
+    [self addEmptySSIDRowAndBeginEditing];
+}
+
+- (CLAuthorizationStatus)locationAuthorizationStatus
+{
+    if(@available(macOS 11.0, *))
+    {
+        if(self.locationManager != nil) { return self.locationManager.authorizationStatus; }
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    return [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+}
+
+/// Before macOS 14 the SSID is readable without Location authorization.
+- (BOOL)isLocationAccessGranted
+{
+    if(@available(macOS 14.0, *)) {} else { return YES; }
+    Auto status = [self locationAuthorizationStatus];
+    return status != kCLAuthorizationStatusNotDetermined
+        && status != kCLAuthorizationStatusDenied
+        && status != kCLAuthorizationStatusRestricted;
+}
+
+- (void)requestLocationAuthorizationIfNeeded
+{
+    if(@available(macOS 10.15, *))
+    {
+        if(self.locationManager == nil)
+        {
+            self.locationManager = [CLLocationManager new];
+        }
+        if([self locationAuthorizationStatus] == kCLAuthorizationStatusNotDetermined)
+        {
+            [self.locationManager requestWhenInUseAuthorization];
+        }
+    }
+}
+
+/// The joined network is offered on the next "+" once access is granted.
+- (void)requestLocationAccessFromMenuItem:(NSMenuItem *)sender
+{
+    [self requestLocationAuthorizationIfNeeded];
+}
+
+- (void)openLocationServicesSettings:(NSMenuItem *)sender
+{
+    Auto url = [NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices"];
+    [NSWorkspace.sharedWorkspace openURL:url];
 }
 
 - (void)addEmptySSIDRowAndBeginEditing
@@ -812,14 +970,28 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 
     if(row < 0 || row >= (NSInteger)self.ssids.count) { return; }
 
+    Auto whitespace = NSCharacterSet.whitespaceAndNewlineCharacterSet;
     Auto previousValue = self.ssids[(NSUInteger)row];
     BOOL wasPlaceholder = (previousValue.length == 0);
+
+    // Surrounding spaces can be part of a real SSID, and one added from
+    // the joined network is stored verbatim. Keep such a value when an
+    // edit doesn't change it beyond whitespace, and keep typed spaces when
+    // the input is exactly the joined network's name.
+    if(!wasPlaceholder && trimmed.length > 0 && [trimmed isEqualToString:[previousValue stringByTrimmingCharactersInSet:whitespace]])
+    {
+        [tableView reloadData];
+        return;
+    }
+    NSString *currentSSID = KYAWiFiMonitor.sharedMonitor.currentSSID;
+    Auto valueToStore = (currentSSID != nil && trimmed.length > 0 && [newValue caseInsensitiveCompare:currentSSID] == NSOrderedSame) ? newValue : trimmed;
 
     BOOL isDuplicate = NO;
     for(NSInteger i = 0; i < (NSInteger)self.ssids.count; i++)
     {
         if(i == row) { continue; }
-        if([self.ssids[(NSUInteger)i] caseInsensitiveCompare:trimmed] == NSOrderedSame) { isDuplicate = YES; break; }
+        Auto existing = [self.ssids[(NSUInteger)i] stringByTrimmingCharactersInSet:whitespace];
+        if(existing.length > 0 && [existing caseInsensitiveCompare:trimmed] == NSOrderedSame) { isDuplicate = YES; break; }
     }
 
     if(trimmed.length == 0 || (isDuplicate && wasPlaceholder))
@@ -838,7 +1010,7 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     }
     else
     {
-        self.ssids[(NSUInteger)row] = trimmed;
+        self.ssids[(NSUInteger)row] = valueToStore;
     }
 
     [self persistModelForKind:KYAWatchedItemsListKindWiFiSSIDs];
