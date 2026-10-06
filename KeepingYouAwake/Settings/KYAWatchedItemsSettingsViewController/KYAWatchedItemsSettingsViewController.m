@@ -27,7 +27,20 @@ static const NSInteger KYAMinutesPerDay = 24 * 60;
 /// Reuse identifier for the schedule-section row stack view.
 static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowView";
 
+@class KYAScheduleTableDelegate;
+
+/// Top-aligns the pane's content inside its scroll view.
+@interface KYAWatchedItemsFlippedView : NSView
+@end
+
+@implementation KYAWatchedItemsFlippedView
+- (BOOL)isFlipped { return YES; }
+@end
+
 @interface KYAWatchedItemsSettingsViewController ()
+/// Hosts the sections; the pane's view is a scroll view around it.
+@property (nonatomic) NSView *documentView;
+@property (nonatomic) KYAScheduleTableDelegate *scheduleTableDelegate;
 @property (nonatomic) NSTableView *ssidTableView;
 @property (nonatomic) NSTableView *applicationsTableView;
 @property (nonatomic) NSTableView *directoriesTableView;
@@ -47,6 +60,31 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 /// `KYAScheduleWindowKeyStartMinutes` and `KYAScheduleWindowKeyEndMinutes`
 /// (NSNumber, 0..1439).
 @property (nonatomic) NSMutableArray<NSMutableDictionary<NSString *, id> *> *scheduleWindows;
+- (nullable NSView *)scheduleRowViewForTableView:(NSTableView *)tableView row:(NSInteger)row;
+- (void)updateRemoveButtonsEnabledState;
+@end
+
+/// Delegate for the schedule table only. AppKit makes *every* table whose
+/// delegate implements -tableView:viewForTableColumn:row: view-based, so
+/// that method can't live on the controller, which also delegates the
+/// cell-based SSID / application / folder tables: those rows rendered
+/// empty and the SSID row couldn't be edited (nothing could be added).
+@interface KYAScheduleTableDelegate : NSObject <NSTableViewDelegate>
+@property (nonatomic, weak) KYAWatchedItemsSettingsViewController *owner;
+@end
+
+@implementation KYAScheduleTableDelegate
+
+- (nullable NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row
+{
+    return [self.owner scheduleRowViewForTableView:tableView row:row];
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification
+{
+    [self.owner updateRemoveButtonsEnabledState];
+}
+
 @end
 
 @implementation KYAWatchedItemsSettingsViewController
@@ -70,10 +108,54 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 
 - (BOOL)resizesView
 {
-    // The view is built programmatically and is taller than the settings
-    // window's default content size, so let the base class size the tab
-    // view to our fittingSize.
-    return YES;
+    // Sized in -viewWillAppear instead: the content can be taller than the
+    // screen, so the pane is capped and scrolls.
+    return NO;
+}
+
+- (void)viewWillAppear
+{
+    [super viewWillAppear];
+
+    [self updatePreferredContentSize];
+
+    // Re-cap when the window moves to another screen or the display
+    // layout changes while this pane stays selected.
+    Auto center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self
+               selector:@selector(screenDidChange:)
+                   name:NSWindowDidChangeScreenNotification
+                 object:self.view.window];
+    [center addObserver:self
+               selector:@selector(screenDidChange:)
+                   name:NSApplicationDidChangeScreenParametersNotification
+                 object:nil];
+}
+
+- (void)screenDidChange:(NSNotification *)notification
+{
+    [self updatePreferredContentSize];
+}
+
+/// Caps the pane to the current screen's visible height so it scrolls
+/// instead of running off-screen.
+- (void)updatePreferredContentSize
+{
+    NSSize content = self.documentView.fittingSize;
+    NSScreen *screen = self.view.window.screen ?: NSScreen.mainScreen;
+    // Leave room for the window's title bar and toolbar. The floor only
+    // guards a degenerate screen; it stays below any real visible frame.
+    CGFloat maximumHeight = MAX(120.0, NSHeight(screen.visibleFrame) - 160.0);
+    CGFloat height = MIN(content.height, maximumHeight);
+    CGFloat width = content.width;
+    NSScrollView *scrollView = (NSScrollView *)self.view;
+    if(content.height > height && scrollView.scrollerStyle == NSScrollerStyleLegacy)
+    {
+        // A legacy scroller takes width from the content; don't clip it.
+        width += [NSScroller scrollerWidthForControlSize:NSControlSizeRegular
+                                           scrollerStyle:NSScrollerStyleLegacy];
+    }
+    self.preferredContentSize = NSMakeSize(width, height);
 }
 
 #pragma mark - Life Cycle
@@ -95,7 +177,8 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 {
     [self loadModel];
 
-    Auto rootView = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 480.0, 460.0)];
+    Auto rootView = [KYAWatchedItemsFlippedView new];
+    rootView.translatesAutoresizingMaskIntoConstraints = NO;
 
     Auto stackView = [NSStackView new];
     stackView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -107,8 +190,8 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     [rootView addSubview:stackView];
 
     [NSLayoutConstraint activateConstraints:@[
-        // Pin the stack view to every edge so the root view derives its
-        // fittingSize (~480 x ~460) from the stack view's content.
+        // Pin the stack view to every edge so the document view derives
+        // its fittingSize from the stack view's content.
         [stackView.topAnchor constraintEqualToAnchor:rootView.topAnchor],
         [stackView.bottomAnchor constraintEqualToAnchor:rootView.bottomAnchor],
         [stackView.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor],
@@ -155,7 +238,23 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     self.scheduleTableView = scheduleTableView;
     self.scheduleControl = scheduleControl;
 
-    self.view = rootView;
+    // The sections are taller than small screens, so they scroll.
+    Auto scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 480.0, 460.0)];
+    scrollView.hasVerticalScroller = YES;
+    scrollView.hasHorizontalScroller = NO;
+    scrollView.autohidesScrollers = YES;
+    scrollView.drawsBackground = NO;
+    scrollView.borderType = NSNoBorder;
+    scrollView.documentView = rootView;
+    Auto clipView = scrollView.contentView;
+    [NSLayoutConstraint activateConstraints:@[
+        [rootView.topAnchor constraintEqualToAnchor:clipView.topAnchor],
+        [rootView.leadingAnchor constraintEqualToAnchor:clipView.leadingAnchor],
+        [rootView.widthAnchor constraintGreaterThanOrEqualToAnchor:clipView.widthAnchor],
+    ]];
+
+    self.documentView = rootView;
+    self.view = scrollView;
 
     [self updateRemoveButtonsEnabledState];
 }
@@ -275,7 +374,12 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     tableView.rowSizeStyle = NSTableViewRowSizeStyleCustom;
     tableView.rowHeight = 32.0;
     tableView.dataSource = self;
-    tableView.delegate = self;
+    // Its own delegate, so the other tables stay cell-based (see
+    // KYAScheduleTableDelegate).
+    Auto scheduleDelegate = [KYAScheduleTableDelegate new];
+    scheduleDelegate.owner = self;
+    self.scheduleTableDelegate = scheduleDelegate;
+    tableView.delegate = scheduleDelegate;
     tableView.tag = KYAWatchedItemsListKindScheduleWindows;
 
     Auto column = [[NSTableColumn alloc] initWithIdentifier:@"window"];
@@ -557,6 +661,9 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 - (void)viewWillDisappear
 {
     [super viewWillDisappear];
+    Auto center = NSNotificationCenter.defaultCenter;
+    [center removeObserver:self name:NSWindowDidChangeScreenNotification object:nil];
+    [center removeObserver:self name:NSApplicationDidChangeScreenParametersNotification object:nil];
     // Commit or drop an edit in progress, then clear leftover placeholders.
     [self.view.window makeFirstResponder:nil];
     [self removeEmptySSIDPlaceholders];
@@ -746,11 +853,9 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     [self updateRemoveButtonsEnabledState];
 }
 
-- (nullable NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row
+/// Row view for the (view-based) schedule table, via KYAScheduleTableDelegate.
+- (nullable NSView *)scheduleRowViewForTableView:(NSTableView *)tableView row:(NSInteger)row
 {
-    // Only the schedule table is view-based; the others are cell-based and
-    // never reach this method.
-    if((KYAWatchedItemsListKind)tableView.tag != KYAWatchedItemsListKindScheduleWindows) { return nil; }
     if(row < 0 || row >= (NSInteger)self.scheduleWindows.count) { return nil; }
 
     NSStackView *rowStack = (NSStackView *)[tableView makeViewWithIdentifier:KYAScheduleWindowRowIdentifier owner:self];
