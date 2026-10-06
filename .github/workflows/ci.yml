@@ -332,8 +332,12 @@ jobs:
           # The app must ship an icon. AppIcon.icon only compiles with
           # Xcode 26, so builds with older Xcode rely on AppIcon.icns.
           ICON_FILE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist" 2>/dev/null || true)"
-          if [ "$ICON_FILE" != "AppIcon" ] || [ ! -s "$APP/Contents/Resources/AppIcon.icns" ]; then
-            echo "::error::Built app has no icon (CFBundleIconFile='$ICON_FILE', AppIcon.icns missing or empty)"
+          if [ "$ICON_FILE" != "AppIcon" ]; then
+            echo "::error::Built app's Info.plist has CFBundleIconFile='$ICON_FILE' (expected 'AppIcon')"
+            exit 1
+          fi
+          if [ ! -s "$APP/Contents/Resources/AppIcon.icns" ]; then
+            echo "::error::Built app has no Contents/Resources/AppIcon.icns (missing or empty)"
             exit 1
           fi
           echo "PASS: app bundle ships AppIcon.icns"
