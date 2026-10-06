@@ -68,10 +68,12 @@ jobs:
           ref: ${{ steps.tag.outputs.tag }}
 
       - name: Select Xcode 16 (avoid Xcode 26.0.1 ibtoold bug)
-        # AppIcon.icon (Icon Composer) needs Xcode 16+, but
-        # Xcode 26.0.1 / macOS 26.0 SDK ships an ibtoold that
-        # crashes while compiling our Assets.xcassets in any
-        # configuration:
+        # AppIcon.icon (Icon Composer) is only compiled by Xcode 26;
+        # Xcode 16 copies it through uncompiled, so the app's icon
+        # comes from the bundled AppIcon.icns (CFBundleIconFile)
+        # instead — see scripts/render-app-icon.swift. Xcode 26.0.1 /
+        # macOS 26.0 SDK ships an ibtoold that crashes while compiling
+        # our Assets.xcassets in any configuration:
         #
         #   Command CompileAssetCatalogVariant failed with a
         #   nonzero exit code
