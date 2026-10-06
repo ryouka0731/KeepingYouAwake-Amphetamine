@@ -69,6 +69,18 @@
     XCTAssertTrue([self.monitor dateIsInsideAnyWindow:target]);
 }
 
+- (void)testSwitchedOffWindowNeverMatches
+{
+    NSMutableDictionary *window = [[self windowWithWeekdays:@[@2] start:9 * 60 end:18 * 60] mutableCopy];
+    window[KYAScheduleWindowKeyEnabled] = @NO;
+    [self.monitor setWindows:@[ window ]];
+    XCTAssertFalse([self.monitor dateIsInsideAnyWindow:[self dateForWeekday:2 hour:12 minute:0]]);
+
+    window[KYAScheduleWindowKeyEnabled] = @YES;
+    [self.monitor setWindows:@[ window ]];
+    XCTAssertTrue([self.monitor dateIsInsideAnyWindow:[self dateForWeekday:2 hour:12 minute:0]]);
+}
+
 - (void)testSimpleWeekdayWindow_outsideSameDay
 {
     // Monday 09:00 to 18:00, query at Monday 08:30 → outside

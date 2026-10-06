@@ -9,6 +9,7 @@
 NSString * const KYAScheduleWindowKeyWeekdays     = @"weekdays";
 NSString * const KYAScheduleWindowKeyStartMinutes = @"startMinutes";
 NSString * const KYAScheduleWindowKeyEndMinutes   = @"endMinutes";
+NSString * const KYAScheduleWindowKeyEnabled      = @"enabled";
 
 #pragma mark - In-memory parsed window
 
@@ -23,6 +24,9 @@ NSString * const KYAScheduleWindowKeyEndMinutes   = @"endMinutes";
 + (nullable KYAParsedScheduleWindow *)parseDictionary:(NSDictionary *)dict
 {
     if(![dict isKindOfClass:NSDictionary.class]) { return nil; }
+    // A window switched off in Watched Items never matches.
+    id rawEnabled = dict[KYAScheduleWindowKeyEnabled];
+    if([rawEnabled isKindOfClass:NSNumber.class] && ![(NSNumber *)rawEnabled boolValue]) { return nil; }
 
     NSArray *rawWeekdays = dict[KYAScheduleWindowKeyWeekdays];
     NSNumber *rawStart = dict[KYAScheduleWindowKeyStartMinutes];

@@ -8,6 +8,7 @@
 #import <XCTest/XCTest.h>
 #import <KYACommon/KYACommon.h>
 #import <KYAApplicationSupport/KYAApplicationSupport.h>
+#import <KYAApplicationSupport/KYAScheduleMonitor.h>
 #import "../../Sources/KYAApplicationSupport/KYAApplicationSupportLog.h"
 
 #define KYA_GENERATE_BOOL_TEST(_short_getter_name, _property_name, _defaults_key)           \
@@ -200,6 +201,119 @@ KYA_GENERATE_BOOL_TEST(isMenuBarCountdownDisabled,
     defaults.kya_batteryCapacityThreshold = 512.0f; // TODO: Maybe this should be invalid?
     XCTAssertEqual([defaults kya_batteryCapacityThreshold], 512.0f);
     XCTAssertEqual([defaults floatForKey:key], 512.0f);
+}
+
+#pragma mark - Switched-off Watched Items
+
+- (void)clearWatchedItemKeys
+{
+    for(NSString *key in @[KYAUserDefaultsKeyWatchedWiFiSSIDs,
+                           KYAUserDefaultsKeyWatchedApplicationBundleIdentifiers,
+                           KYAUserDefaultsKeyDownloadDirectories,
+                           KYAUserDefaultsKeyScheduleWindows,
+                           KYAUserDefaultsKeyDisabledWatchedWiFiSSIDs,
+                           KYAUserDefaultsKeyDisabledWatchedApplicationBundleIdentifiers,
+                           KYAUserDefaultsKeyDisabledDownloadDirectories])
+    {
+        [self.defaults removeObjectForKey:key];
+    }
+}
+
+- (void)testEnabledWatchedWiFiSSIDs_excludesSwitchedOffEntries
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_watchedWiFiSSIDs = @[@"Office", @"Home", @"Cafe"];
+    defaults.kya_disabledWatchedWiFiSSIDs = @[@"Home"];
+    XCTAssertEqualObjects(defaults.kya_enabledWatchedWiFiSSIDs, (@[@"Office", @"Cafe"]));
+    // The full list is untouched.
+    XCTAssertEqualObjects(defaults.kya_watchedWiFiSSIDs, (@[@"Office", @"Home", @"Cafe"]));
+}
+
+- (void)testEnabledWatchedWiFiSSIDs_nilWhenEverythingSwitchedOff
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_watchedWiFiSSIDs = @[@"Office"];
+    defaults.kya_disabledWatchedWiFiSSIDs = @[@"Office"];
+    XCTAssertNil(defaults.kya_enabledWatchedWiFiSSIDs);
+}
+
+- (void)testEnabledWatchedWiFiSSIDs_ignoresCaseButNotWhitespace
+{
+    // The Wi-Fi trigger matches SSIDs ignoring case, so switching one off
+    // must too; surrounding spaces are part of an SSID.
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_watchedWiFiSSIDs = @[@"Office ", @"office"];
+    defaults.kya_disabledWatchedWiFiSSIDs = @[@"Office"];
+    XCTAssertEqualObjects(defaults.kya_enabledWatchedWiFiSSIDs, (@[@"Office "]));
+}
+
+- (void)testEnabledWatchedApplications_ignoresCase
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_watchedApplicationBundleIdentifiers = @[@"com.apple.logic", @"com.apple.FinalCut"];
+    defaults.kya_disabledWatchedApplicationBundleIdentifiers = @[@"com.apple.Logic"];
+    XCTAssertEqualObjects(defaults.kya_enabledWatchedApplicationBundleIdentifiers, (@[@"com.apple.FinalCut"]));
+}
+
+- (void)testEnabledDownloadDirectories_matchesPathsExactly
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_downloadDirectories = @[@"~/downloads", @"~/Downloads"];
+    defaults.kya_disabledDownloadDirectories = @[@"~/Downloads"];
+    XCTAssertEqualObjects(defaults.kya_enabledDownloadDirectories, (@[@"~/downloads"]));
+}
+
+- (void)testEnabledWatchedApplications_excludesSwitchedOffEntries
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_watchedApplicationBundleIdentifiers = @[@"com.apple.Logic", @"com.apple.FinalCut"];
+    defaults.kya_disabledWatchedApplicationBundleIdentifiers = @[@"com.apple.Logic"];
+    XCTAssertEqualObjects(defaults.kya_enabledWatchedApplicationBundleIdentifiers, (@[@"com.apple.FinalCut"]));
+}
+
+- (void)testEnabledDownloadDirectories_distinguishesUnsetFromAllOff
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    // Unset: callers fall back to ~/Downloads.
+    XCTAssertNil(defaults.kya_enabledDownloadDirectories);
+
+    defaults.kya_downloadDirectories = @[@"~/Downloads", @"~/Torrents"];
+    defaults.kya_disabledDownloadDirectories = @[@"~/Torrents"];
+    XCTAssertEqualObjects(defaults.kya_enabledDownloadDirectories, (@[@"~/Downloads"]));
+
+    // Every folder off: an empty list, not the fallback.
+    defaults.kya_disabledDownloadDirectories = @[@"~/Downloads", @"~/Torrents"];
+    XCTAssertEqualObjects(defaults.kya_enabledDownloadDirectories, (@[]));
+}
+
+- (void)testEnabledScheduleWindows_skipsWindowsSwitchedOff
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    NSDictionary *on = @{ KYAScheduleWindowKeyWeekdays: @[@2], KYAScheduleWindowKeyStartMinutes: @540, KYAScheduleWindowKeyEndMinutes: @1080 };
+    NSDictionary *explicitOn = @{ KYAScheduleWindowKeyWeekdays: @[@3], KYAScheduleWindowKeyStartMinutes: @540, KYAScheduleWindowKeyEndMinutes: @1080, KYAScheduleWindowKeyEnabled: @YES };
+    NSDictionary *off = @{ KYAScheduleWindowKeyWeekdays: @[@4], KYAScheduleWindowKeyStartMinutes: @540, KYAScheduleWindowKeyEndMinutes: @1080, KYAScheduleWindowKeyEnabled: @NO };
+    defaults.kya_scheduleWindows = @[on, explicitOn, off];
+    XCTAssertEqualObjects(defaults.kya_enabledScheduleWindows, (@[on, explicitOn]));
+
+    defaults.kya_scheduleWindows = @[off];
+    XCTAssertNil(defaults.kya_enabledScheduleWindows);
+}
+
+- (void)testDisabledLists_emptyArrayClearsKey
+{
+    [self clearWatchedItemKeys];
+    Auto defaults = self.defaults;
+    defaults.kya_disabledWatchedWiFiSSIDs = @[@"x"];
+    defaults.kya_disabledWatchedWiFiSSIDs = @[];
+    XCTAssertNil([defaults objectForKey:KYAUserDefaultsKeyDisabledWatchedWiFiSSIDs]);
 }
 
 @end

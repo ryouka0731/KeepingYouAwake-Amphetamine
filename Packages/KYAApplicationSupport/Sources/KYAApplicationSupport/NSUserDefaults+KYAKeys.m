@@ -7,6 +7,7 @@
 //
 
 #import <KYAApplicationSupport/NSUserDefaults+KYAKeys.h>
+#import <KYAApplicationSupport/KYAScheduleMonitor.h>
 #import <KYACommon/KYACommon.h>
 
 // A macro to define a new user defaults convenience property for BOOL values.
@@ -261,6 +262,120 @@ NSString * const KYAUserDefaultsKeyDownloadDirectories = @"info.marcel-dierkes.K
     {
         [self setObject:[directories copy] forKey:KYAUserDefaultsKeyDownloadDirectories];
     }
+}
+
+#pragma mark - Switched-off Watched Items
+
+NSString * const KYAUserDefaultsKeyDisabledWatchedWiFiSSIDs = @"info.marcel-dierkes.KeepingYouAwake.DisabledWatchedWiFiSSIDs";
+NSString * const KYAUserDefaultsKeyDisabledWatchedApplicationBundleIdentifiers = @"info.marcel-dierkes.KeepingYouAwake.DisabledWatchedApplicationBundleIdentifiers";
+NSString * const KYAUserDefaultsKeyDisabledDownloadDirectories = @"info.marcel-dierkes.KeepingYouAwake.DisabledDownloadDirectories";
+
+/// Non-empty strings stored under `key`, or nil.
+- (nullable NSArray<NSString *> *)kya_nonEmptyStringsForKey:(NSString *)key
+{
+    Auto raw = [self arrayForKey:key];
+    Auto strings = [NSMutableArray<NSString *> arrayWithCapacity:raw.count];
+    for(id entry in raw)
+    {
+        if([entry isKindOfClass:NSString.class] && [(NSString *)entry length] > 0)
+        {
+            [strings addObject:(NSString *)entry];
+        }
+    }
+    return (strings.count > 0) ? [strings copy] : nil;
+}
+
+- (void)kya_setStrings:(nullable NSArray<NSString *> *)strings forKey:(NSString *)key
+{
+    if(strings.count == 0)
+    {
+        [self removeObjectForKey:key];
+    }
+    else
+    {
+        [self setObject:[strings copy] forKey:key];
+    }
+}
+
+/// `items` without the entries in `disabled`. `ignoringCase` matches the
+/// way the trigger itself compares entries (SSIDs and bundle identifiers
+/// case-insensitively, folder paths exactly).
+static NSArray<NSString *> *KYAEnabledItems(NSArray<NSString *> *items, NSArray<NSString *> *disabled, BOOL ignoringCase)
+{
+    if(disabled.count == 0) { return items; }
+    Auto off = [NSMutableSet<NSString *> setWithCapacity:disabled.count];
+    for(NSString *entry in disabled)
+    {
+        [off addObject:ignoringCase ? entry.lowercaseString : entry];
+    }
+    Auto enabled = [NSMutableArray<NSString *> arrayWithCapacity:items.count];
+    for(NSString *item in items)
+    {
+        if(![off containsObject:ignoringCase ? item.lowercaseString : item]) { [enabled addObject:item]; }
+    }
+    return [enabled copy];
+}
+
+- (NSArray<NSString *> *)kya_disabledWatchedWiFiSSIDs
+{
+    return [self kya_nonEmptyStringsForKey:KYAUserDefaultsKeyDisabledWatchedWiFiSSIDs];
+}
+
+- (void)setKya_disabledWatchedWiFiSSIDs:(NSArray<NSString *> *)ssids
+{
+    [self kya_setStrings:ssids forKey:KYAUserDefaultsKeyDisabledWatchedWiFiSSIDs];
+}
+
+- (NSArray<NSString *> *)kya_disabledWatchedApplicationBundleIdentifiers
+{
+    return [self kya_nonEmptyStringsForKey:KYAUserDefaultsKeyDisabledWatchedApplicationBundleIdentifiers];
+}
+
+- (void)setKya_disabledWatchedApplicationBundleIdentifiers:(NSArray<NSString *> *)bundleIdentifiers
+{
+    [self kya_setStrings:bundleIdentifiers forKey:KYAUserDefaultsKeyDisabledWatchedApplicationBundleIdentifiers];
+}
+
+- (NSArray<NSString *> *)kya_disabledDownloadDirectories
+{
+    return [self kya_nonEmptyStringsForKey:KYAUserDefaultsKeyDisabledDownloadDirectories];
+}
+
+- (void)setKya_disabledDownloadDirectories:(NSArray<NSString *> *)directories
+{
+    [self kya_setStrings:directories forKey:KYAUserDefaultsKeyDisabledDownloadDirectories];
+}
+
+- (NSArray<NSString *> *)kya_enabledWatchedWiFiSSIDs
+{
+    Auto enabled = KYAEnabledItems(self.kya_watchedWiFiSSIDs, self.kya_disabledWatchedWiFiSSIDs, YES);
+    return (enabled.count > 0) ? enabled : nil;
+}
+
+- (NSArray<NSString *> *)kya_enabledWatchedApplicationBundleIdentifiers
+{
+    Auto enabled = KYAEnabledItems(self.kya_watchedApplicationBundleIdentifiers,
+                                   self.kya_disabledWatchedApplicationBundleIdentifiers, YES);
+    return (enabled.count > 0) ? enabled : nil;
+}
+
+- (NSArray<NSString *> *)kya_enabledDownloadDirectories
+{
+    Auto directories = self.kya_downloadDirectories;
+    if(directories == nil) { return nil; }
+    return KYAEnabledItems(directories, self.kya_disabledDownloadDirectories, NO);
+}
+
+- (NSArray<NSDictionary<NSString *, id> *> *)kya_enabledScheduleWindows
+{
+    Auto enabled = [NSMutableArray<NSDictionary<NSString *, id> *> new];
+    for(NSDictionary<NSString *, id> *window in self.kya_scheduleWindows)
+    {
+        id flag = window[KYAScheduleWindowKeyEnabled];
+        if([flag isKindOfClass:NSNumber.class] && ![(NSNumber *)flag boolValue]) { continue; }
+        [enabled addObject:window];
+    }
+    return (enabled.count > 0) ? [enabled copy] : nil;
 }
 
 #pragma mark - Battery Capacity Threshold

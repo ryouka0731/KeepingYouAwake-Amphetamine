@@ -33,6 +33,9 @@ KYA_EXPORT NSString * const KYAUserDefaultsKeyScheduleEnabled;
 KYA_EXPORT NSString * const KYAUserDefaultsKeyScheduleWindows;
 KYA_EXPORT NSString * const KYAUserDefaultsKeyDownloadInProgressActivationEnabled;
 KYA_EXPORT NSString * const KYAUserDefaultsKeyDownloadDirectories;
+KYA_EXPORT NSString * const KYAUserDefaultsKeyDisabledWatchedWiFiSSIDs;
+KYA_EXPORT NSString * const KYAUserDefaultsKeyDisabledWatchedApplicationBundleIdentifiers;
+KYA_EXPORT NSString * const KYAUserDefaultsKeyDisabledDownloadDirectories;
 KYA_EXPORT NSString * const KYAUserDefaultsKeyMouseJigglerEnabled;
 KYA_EXPORT NSString * const KYAUserDefaultsKeyActivateOnExternalAudioOutputEnabled;
 KYA_EXPORT NSString * const KYAUserDefaultsKeyActivateOnCPULoadEnabled;
@@ -158,6 +161,25 @@ KYA_EXPORT NSString * const KYAUserDefaultsKeyCPULoadActivationThreshold;
 /// path string (`~` is expanded). Defaults to `["~/Downloads"]` when
 /// the key is absent.
 @property (copy, nonatomic, nullable) NSArray<NSString *> *kya_downloadDirectories;
+
+/// Entries of `kya_watchedWiFiSSIDs`, `kya_watchedApplicationBundleIdentifiers`
+/// and `kya_downloadDirectories` that stay in the list but are switched off
+/// (Watched Items checkboxes). Matched the way each trigger compares
+/// entries: SSIDs and bundle identifiers ignoring case (whitespace still
+/// counts), folder paths exactly. A schedule window
+/// is switched off with `KYAScheduleWindowKeyEnabled` = NO instead.
+@property (copy, nonatomic, nullable) NSArray<NSString *> *kya_disabledWatchedWiFiSSIDs;
+@property (copy, nonatomic, nullable) NSArray<NSString *> *kya_disabledWatchedApplicationBundleIdentifiers;
+@property (copy, nonatomic, nullable) NSArray<NSString *> *kya_disabledDownloadDirectories;
+
+/// The switched-on entries, which are what the triggers act on. `nil`
+/// when none are on.
+@property (nonatomic, readonly, nullable) NSArray<NSString *> *kya_enabledWatchedWiFiSSIDs;
+@property (nonatomic, readonly, nullable) NSArray<NSString *> *kya_enabledWatchedApplicationBundleIdentifiers;
+@property (nonatomic, readonly, nullable) NSArray<NSDictionary<NSString *, id> *> *kya_enabledScheduleWindows;
+/// `nil` only while `kya_downloadDirectories` is unset (callers fall back
+/// to ~/Downloads); an empty array when every configured folder is off.
+@property (nonatomic, readonly, nullable) NSArray<NSString *> *kya_enabledDownloadDirectories;
 
 /// Returns YES if KYA should periodically nudge the cursor by 1px while
 /// a session is active. Useful for keeping IM apps that key off system

@@ -29,6 +29,10 @@ static const NSInteger KYAMinutesPerDay = 24 * 60;
 /// Reuse identifier for the schedule-section row stack view.
 static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowView";
 
+/// Column identifiers of the SSID / application / folder tables.
+static NSString * const KYAWatchedItemsEnabledColumnIdentifier = @"enabled";
+static NSString * const KYAWatchedItemsValueColumnIdentifier = @"value";
+
 @class KYAScheduleTableDelegate;
 
 /// Top-aligns the pane's content inside its scroll view.
@@ -56,6 +60,11 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 @property (nonatomic) NSMutableArray<NSString *> *ssids;
 @property (nonatomic) NSMutableArray<NSString *> *bundleIdentifiers;
 @property (nonatomic) NSMutableArray<NSString *> *directories;
+
+/// Entries of the lists above that are switched off (unchecked).
+@property (nonatomic) NSMutableSet<NSString *> *disabledSSIDs;
+@property (nonatomic) NSMutableSet<NSString *> *disabledBundleIdentifiers;
+@property (nonatomic) NSMutableSet<NSString *> *disabledDirectories;
 
 /// Asks for the Location authorization macOS 14+ requires before an app
 /// may read the joined Wi-Fi network's name.
@@ -303,11 +312,26 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     tableView.delegate = self;
     tableView.tag = kind;
 
-    Auto column = [[NSTableColumn alloc] initWithIdentifier:@"value"];
+    // One click switches an entry on or off without removing it.
+    Auto enabledCell = [NSButtonCell new];
+    enabledCell.buttonType = NSButtonTypeSwitch;
+    enabledCell.title = @"";
+    enabledCell.imagePosition = NSImageOnly;
+    enabledCell.accessibilityLabel = KYA_L10N_WATCHED_ITEM_ENABLED;
+    Auto enabledColumn = [[NSTableColumn alloc] initWithIdentifier:KYAWatchedItemsEnabledColumnIdentifier];
+    enabledColumn.dataCell = enabledCell;
+    enabledColumn.editable = YES;
+    enabledColumn.width = 22.0;
+    enabledColumn.minWidth = 22.0;
+    enabledColumn.maxWidth = 22.0;
+    enabledColumn.resizingMask = NSTableColumnNoResizing;
+    [tableView addTableColumn:enabledColumn];
+
+    Auto column = [[NSTableColumn alloc] initWithIdentifier:KYAWatchedItemsValueColumnIdentifier];
     column.editable = editable;
     column.resizingMask = NSTableColumnAutoresizingMask;
     [tableView addTableColumn:column];
-    tableView.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
+    tableView.columnAutoresizingStyle = NSTableViewLastColumnOnlyAutoresizingStyle;
 
     Auto scrollView = [NSScrollView new];
     scrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -441,6 +465,9 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     self.ssids = [[defaults kya_watchedWiFiSSIDs] mutableCopy] ?: [NSMutableArray new];
     self.bundleIdentifiers = [[defaults kya_watchedApplicationBundleIdentifiers] mutableCopy] ?: [NSMutableArray new];
     self.directories = [[defaults kya_downloadDirectories] mutableCopy] ?: [NSMutableArray new];
+    self.disabledSSIDs = [NSMutableSet setWithArray:defaults.kya_disabledWatchedWiFiSSIDs ?: @[]];
+    self.disabledBundleIdentifiers = [NSMutableSet setWithArray:defaults.kya_disabledWatchedApplicationBundleIdentifiers ?: @[]];
+    self.disabledDirectories = [NSMutableSet setWithArray:defaults.kya_disabledDownloadDirectories ?: @[]];
 
     Auto windows = [NSMutableArray new];
     for(id entry in (defaults.kya_scheduleWindows ?: @[]))
@@ -476,11 +503,17 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     start = MAX((NSInteger)0, MIN(KYAMinutesPerDay - 1, start));
     end = MAX((NSInteger)0, MIN(KYAMinutesPerDay - 1, end));
 
-    return [@{
+    Auto window = [@{
         KYAScheduleWindowKeyWeekdays: weekdays,
         KYAScheduleWindowKeyStartMinutes: @(start),
         KYAScheduleWindowKeyEndMinutes: @(end),
     } mutableCopy];
+    id enabled = dictionary[KYAScheduleWindowKeyEnabled];
+    if([enabled isKindOfClass:[NSNumber class]] && ![(NSNumber *)enabled boolValue])
+    {
+        window[KYAScheduleWindowKeyEnabled] = @NO;
+    }
+    return window;
 }
 
 - (NSMutableArray<NSString *> *)modelForKind:(KYAWatchedItemsListKind)kind
@@ -493,6 +526,92 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
         case KYAWatchedItemsListKindScheduleWindows: break; // not a string list; handled separately
     }
     return [NSMutableArray new];
+}
+
+- (NSMutableSet<NSString *> *)disabledItemsForKind:(KYAWatchedItemsListKind)kind
+{
+    switch(kind)
+    {
+        case KYAWatchedItemsListKindWiFiSSIDs: return self.disabledSSIDs;
+        case KYAWatchedItemsListKindApplications: return self.disabledBundleIdentifiers;
+        case KYAWatchedItemsListKindDownloadDirectories: return self.disabledDirectories;
+        case KYAWatchedItemsListKindScheduleWindows: break; // flag lives in each window
+    }
+    return [NSMutableSet new];
+}
+
+- (nullable NSArray<NSString *> *)persistedDisabledItemsForKind:(KYAWatchedItemsListKind)kind
+{
+    Auto defaults = NSUserDefaults.standardUserDefaults;
+    switch(kind)
+    {
+        case KYAWatchedItemsListKindWiFiSSIDs: return defaults.kya_disabledWatchedWiFiSSIDs;
+        case KYAWatchedItemsListKindApplications: return defaults.kya_disabledWatchedApplicationBundleIdentifiers;
+        case KYAWatchedItemsListKindDownloadDirectories: return defaults.kya_disabledDownloadDirectories;
+        case KYAWatchedItemsListKindScheduleWindows: break;
+    }
+    return nil;
+}
+
+/// Writes the switched-off entries of `kind`, skipping a write that
+/// wouldn't change anything (every write re-evaluates the triggers).
+- (void)writeDisabledItems:(NSArray<NSString *> *)items forKind:(KYAWatchedItemsListKind)kind
+{
+    Auto sorted = [items sortedArrayUsingSelector:@selector(compare:)];
+    Auto current = [[self persistedDisabledItemsForKind:kind] ?: @[] sortedArrayUsingSelector:@selector(compare:)];
+    if([sorted isEqualToArray:current]) { return; }
+    Auto defaults = NSUserDefaults.standardUserDefaults;
+    switch(kind)
+    {
+        case KYAWatchedItemsListKindWiFiSSIDs: defaults.kya_disabledWatchedWiFiSSIDs = sorted; break;
+        case KYAWatchedItemsListKindApplications: defaults.kya_disabledWatchedApplicationBundleIdentifiers = sorted; break;
+        case KYAWatchedItemsListKindDownloadDirectories: defaults.kya_disabledDownloadDirectories = sorted; break;
+        case KYAWatchedItemsListKindScheduleWindows: break;
+    }
+}
+
+/// Switched-off entries match the way the trigger compares entries:
+/// SSIDs and bundle identifiers ignoring case, folder paths exactly.
+- (BOOL)switchedOffEntry:(NSString *)entry matchesItem:(NSString *)item kind:(KYAWatchedItemsListKind)kind
+{
+    if(kind == KYAWatchedItemsListKindDownloadDirectories) { return [entry isEqualToString:item]; }
+    return [entry caseInsensitiveCompare:item] == NSOrderedSame;
+}
+
+- (BOOL)isItemEnabled:(NSString *)item kind:(KYAWatchedItemsListKind)kind
+{
+    if(item.length == 0) { return YES; }
+    for(NSString *entry in [self disabledItemsForKind:kind])
+    {
+        if([self switchedOffEntry:entry matchesItem:item kind:kind]) { return NO; }
+    }
+    return YES;
+}
+
+/// Removes the switched-off entries that match `item`.
+- (void)removeSwitchedOffEntriesMatchingItem:(NSString *)item kind:(KYAWatchedItemsListKind)kind
+{
+    Auto disabled = [self disabledItemsForKind:kind];
+    for(NSString *entry in disabled.allObjects)
+    {
+        if([self switchedOffEntry:entry matchesItem:item kind:kind]) { [disabled removeObject:entry]; }
+    }
+}
+
+/// Drops switched-off entries that no longer match any listed item.
+- (void)pruneSwitchedOffEntriesForKind:(KYAWatchedItemsListKind)kind
+{
+    Auto disabled = [self disabledItemsForKind:kind];
+    Auto model = [self modelForKind:kind];
+    for(NSString *entry in disabled.allObjects)
+    {
+        BOOL listed = NO;
+        for(NSString *item in model)
+        {
+            if(item.length > 0 && [self switchedOffEntry:entry matchesItem:item kind:kind]) { listed = YES; break; }
+        }
+        if(!listed) { [disabled removeObject:entry]; }
+    }
 }
 
 - (NSTableView *)tableViewForKind:(KYAWatchedItemsListKind)kind
@@ -509,20 +628,47 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 
 - (void)persistModelForKind:(KYAWatchedItemsListKind)kind
 {
+    if(kind == KYAWatchedItemsListKindScheduleWindows)
+    {
+        [self persistScheduleWindows];
+        return;
+    }
+    // Each write is picked up by the triggers right away. Widen the
+    // persisted switched-off set first, so a renamed or newly unchecked
+    // entry is never briefly treated as on, then write the list, then
+    // drop switched-off entries that are no longer listed.
+    Auto disabled = [self disabledItemsForKind:kind];
+    Auto widened = [NSMutableSet setWithSet:disabled];
+    [widened addObjectsFromArray:[self persistedDisabledItemsForKind:kind] ?: @[]];
+    [self writeDisabledItems:widened.allObjects forKind:kind];
+
+    [self persistListForKind:kind];
+
+    [self pruneSwitchedOffEntriesForKind:kind];
+    [self writeDisabledItems:disabled.allObjects forKind:kind];
+}
+
+- (void)persistListForKind:(KYAWatchedItemsListKind)kind
+{
     Auto defaults = NSUserDefaults.standardUserDefaults;
     switch(kind)
     {
+        // Every write re-evaluates the triggers; skip one that changes
+        // nothing (e.g. only an on/off checkbox was clicked).
         case KYAWatchedItemsListKindWiFiSSIDs:
         {
             // Never persist an in-progress placeholder row.
             NSArray<NSString *> *ssids = [self.ssids filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]];
+            if([ssids isEqualToArray:defaults.kya_watchedWiFiSSIDs ?: @[]]) { break; }
             defaults.kya_watchedWiFiSSIDs = (ssids.count > 0) ? ssids : nil;
         }
             break;
         case KYAWatchedItemsListKindApplications:
+            if([self.bundleIdentifiers isEqualToArray:defaults.kya_watchedApplicationBundleIdentifiers ?: @[]]) { break; }
             defaults.kya_watchedApplicationBundleIdentifiers = (self.bundleIdentifiers.count > 0) ? [self.bundleIdentifiers copy] : nil;
             break;
         case KYAWatchedItemsListKindDownloadDirectories:
+            if([self.directories isEqualToArray:defaults.kya_downloadDirectories ?: @[]]) { break; }
             defaults.kya_downloadDirectories = (self.directories.count > 0) ? [self.directories copy] : nil;
             break;
         case KYAWatchedItemsListKindScheduleWindows:
@@ -783,7 +929,10 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     [self.ssidTableView reloadData];
     Auto row = (NSInteger)(self.ssids.count - 1);
     [self.ssidTableView scrollRowToVisible:row];
-    [self.ssidTableView editColumn:0 row:row withEvent:nil select:YES];
+    [self.ssidTableView editColumn:[self.ssidTableView columnWithIdentifier:KYAWatchedItemsValueColumnIdentifier]
+                               row:row
+                         withEvent:nil
+                            select:YES];
     [self updateRemoveButtonsEnabledState];
 }
 
@@ -954,15 +1103,44 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 {
     // The schedule table is view-based; it has no string object value.
     if((KYAWatchedItemsListKind)tableView.tag == KYAWatchedItemsListKindScheduleWindows) { return nil; }
-    Auto model = [self modelForKind:(KYAWatchedItemsListKind)tableView.tag];
-    if(row < 0 || row >= (NSInteger)model.count) { return @""; }
-    return model[(NSUInteger)row];
+    Auto kind = (KYAWatchedItemsListKind)tableView.tag;
+    Auto model = [self modelForKind:kind];
+    BOOL isEnabledColumn = [tableColumn.identifier isEqualToString:KYAWatchedItemsEnabledColumnIdentifier];
+    if(row < 0 || row >= (NSInteger)model.count) { return isEnabledColumn ? @YES : @""; }
+    Auto item = model[(NSUInteger)row];
+    if(isEnabledColumn) { return @([self isItemEnabled:item kind:kind]); }
+    return item;
+}
+
+- (void)setItemAtRow:(NSInteger)row ofKind:(KYAWatchedItemsListKind)kind enabled:(BOOL)enabled
+{
+    Auto model = [self modelForKind:kind];
+    if(row < 0 || row >= (NSInteger)model.count) { return; }
+    Auto item = model[(NSUInteger)row];
+    // An SSID placeholder being typed has nothing to switch yet.
+    if(item.length == 0) { return; }
+    if(enabled)
+    {
+        [self removeSwitchedOffEntriesMatchingItem:item kind:kind];
+    }
+    else
+    {
+        [[self disabledItemsForKind:kind] addObject:item];
+    }
+    [self persistModelForKind:kind];
+    [[self tableViewForKind:kind] reloadData];
 }
 
 - (void)tableView:(NSTableView *)tableView setObjectValue:(id)object forTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row
 {
-    // Only the SSID column is editable.
     Auto kind = (KYAWatchedItemsListKind)tableView.tag;
+    if([tableColumn.identifier isEqualToString:KYAWatchedItemsEnabledColumnIdentifier])
+    {
+        BOOL enabled = [object respondsToSelector:@selector(boolValue)] && [object boolValue];
+        [self setItemAtRow:row ofKind:kind enabled:enabled];
+        return;
+    }
+    // Otherwise only the SSID column is editable.
     if(kind != KYAWatchedItemsListKindWiFiSSIDs) { return; }
 
     Auto newValue = [object isKindOfClass:[NSString class]] ? (NSString *)object : @"";
@@ -1011,6 +1189,12 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     else
     {
         self.ssids[(NSUInteger)row] = valueToStore;
+        // A renamed entry keeps its on/off state.
+        if(![self isItemEnabled:previousValue kind:KYAWatchedItemsListKindWiFiSSIDs])
+        {
+            [self removeSwitchedOffEntriesMatchingItem:previousValue kind:KYAWatchedItemsListKindWiFiSSIDs];
+            [self.disabledSSIDs addObject:valueToStore];
+        }
     }
 
     [self persistModelForKind:KYAWatchedItemsListKindWiFiSSIDs];
@@ -1025,12 +1209,41 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     [self updateRemoveButtonsEnabledState];
 }
 
+/// Dims switched-off entries; the checkbox of an SSID still being typed
+/// can't be used yet.
+- (void)tableView:(NSTableView *)tableView willDisplayCell:(id)cell forTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row
+{
+    Auto kind = (KYAWatchedItemsListKind)tableView.tag;
+    Auto model = [self modelForKind:kind];
+    if(row < 0 || row >= (NSInteger)model.count) { return; }
+    Auto item = model[(NSUInteger)row];
+    if([tableColumn.identifier isEqualToString:KYAWatchedItemsEnabledColumnIdentifier] && [cell isKindOfClass:[NSButtonCell class]])
+    {
+        ((NSButtonCell *)cell).enabled = (item.length > 0);
+    }
+    else if([tableColumn.identifier isEqualToString:KYAWatchedItemsValueColumnIdentifier] && [cell isKindOfClass:[NSTextFieldCell class]])
+    {
+        BOOL enabled = [self isItemEnabled:item kind:kind];
+        ((NSTextFieldCell *)cell).textColor = enabled ? NSColor.controlTextColor : NSColor.disabledControlTextColor;
+    }
+}
+
+- (NSString *)tableView:(NSTableView *)tableView toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row mouseLocation:(NSPoint)mouseLocation
+{
+    if([tableColumn.identifier isEqualToString:KYAWatchedItemsEnabledColumnIdentifier])
+    {
+        return KYA_L10N_WATCHED_ITEM_TOGGLE_TOOLTIP;
+    }
+    return @"";
+}
+
 /// Row view for the (view-based) schedule table, via KYAScheduleTableDelegate.
 - (nullable NSView *)scheduleRowViewForTableView:(NSTableView *)tableView row:(NSInteger)row
 {
     if(row < 0 || row >= (NSInteger)self.scheduleWindows.count) { return nil; }
 
     NSStackView *rowStack = (NSStackView *)[tableView makeViewWithIdentifier:KYAScheduleWindowRowIdentifier owner:self];
+    NSButton *enabledCheckbox = nil;
     NSSegmentedControl *weekdayControl = nil;
     NSDatePicker *startPicker = nil;
     NSDatePicker *endPicker = nil;
@@ -1039,7 +1252,8 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     {
         for(NSView *subview in rowStack.arrangedSubviews)
         {
-            if([subview.identifier isEqualToString:@"weekdays"]) { weekdayControl = (NSSegmentedControl *)subview; }
+            if([subview.identifier isEqualToString:@"enabled"]) { enabledCheckbox = (NSButton *)subview; }
+            else if([subview.identifier isEqualToString:@"weekdays"]) { weekdayControl = (NSSegmentedControl *)subview; }
             else if([subview.identifier isEqualToString:@"start"]) { startPicker = (NSDatePicker *)subview; }
             else if([subview.identifier isEqualToString:@"end"]) { endPicker = (NSDatePicker *)subview; }
         }
@@ -1048,9 +1262,10 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
         // or an identifier collision returns an unrelated view), drop the
         // reused container and rebuild from scratch instead of dereferencing
         // a nil control below.
-        if(weekdayControl == nil || startPicker == nil || endPicker == nil)
+        if(enabledCheckbox == nil || weekdayControl == nil || startPicker == nil || endPicker == nil)
         {
             rowStack = nil;
+            enabledCheckbox = nil;
             weekdayControl = nil;
             startPicker = nil;
             endPicker = nil;
@@ -1059,9 +1274,10 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 
     if(rowStack == nil)
     {
-        rowStack = [self makeFreshScheduleRowViewWithWeekdayControl:&weekdayControl
-                                                        startPicker:&startPicker
-                                                          endPicker:&endPicker];
+        rowStack = [self makeFreshScheduleRowViewWithEnabledCheckbox:&enabledCheckbox
+                                                      weekdayControl:&weekdayControl
+                                                         startPicker:&startPicker
+                                                           endPicker:&endPicker];
     }
 
     Auto window = self.scheduleWindows[(NSUInteger)row];
@@ -1077,13 +1293,22 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     startPicker.dateValue = [self dateForMinutesSinceMidnight:startMinutes];
     endPicker.dateValue = [self dateForMinutesSinceMidnight:endMinutes];
 
+    BOOL enabled = ![window[KYAScheduleWindowKeyEnabled] isEqual:@NO];
+    enabledCheckbox.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    // Dim a switched-off window; it stays editable.
+    for(NSView *subview in rowStack.arrangedSubviews)
+    {
+        if(subview != enabledCheckbox) { subview.alphaValue = enabled ? 1.0 : 0.45; }
+    }
+
     return rowStack;
 }
 
 /// Builds a brand-new schedule-row stack view with its three input
 /// controls wired up. Used both for the initial inflation path and as
 /// the recovery path when a reused view came back missing a subview.
-- (NSStackView *)makeFreshScheduleRowViewWithWeekdayControl:(NSSegmentedControl * _Nullable __autoreleasing * _Nonnull)outWeekday
+- (NSStackView *)makeFreshScheduleRowViewWithEnabledCheckbox:(NSButton * _Nullable __autoreleasing * _Nonnull)outEnabled
+                                               weekdayControl:(NSSegmentedControl * _Nullable __autoreleasing * _Nonnull)outWeekday
                                                 startPicker:(NSDatePicker * _Nullable __autoreleasing * _Nonnull)outStart
                                                   endPicker:(NSDatePicker * _Nullable __autoreleasing * _Nonnull)outEnd
 {
@@ -1093,6 +1318,12 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     rowStack.alignment = NSLayoutAttributeCenterY;
     rowStack.spacing = 6.0;
     rowStack.translatesAutoresizingMaskIntoConstraints = NO;
+
+    Auto enabledCheckbox = [NSButton checkboxWithTitle:@"" target:self action:@selector(scheduleEnabledCheckboxChanged:)];
+    enabledCheckbox.identifier = @"enabled";
+    enabledCheckbox.toolTip = KYA_L10N_WATCHED_ITEM_TOGGLE_TOOLTIP;
+    enabledCheckbox.accessibilityLabel = KYA_L10N_WATCHED_ITEM_ENABLED;
+    [rowStack addArrangedSubview:enabledCheckbox];
 
     Auto weekdayControl = [NSSegmentedControl new];
     weekdayControl.identifier = @"weekdays";
@@ -1126,6 +1357,7 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
     Auto endPicker = [self makeTimeDatePickerWithIdentifier:@"end" action:@selector(scheduleEndPickerChanged:)];
     [rowStack addArrangedSubview:endPicker];
 
+    *outEnabled = enabledCheckbox;
     *outWeekday = weekdayControl;
     *outStart = startPicker;
     *outEnd = endPicker;
@@ -1206,6 +1438,24 @@ static NSString * const KYAScheduleWindowRowIdentifier = @"KYAScheduleWindowRowV
 }
 
 #pragma mark - Schedule Row Actions
+
+- (void)scheduleEnabledCheckboxChanged:(NSButton *)sender
+{
+    NSInteger row = [self.scheduleTableView rowForView:sender];
+    if(row < 0 || row >= (NSInteger)self.scheduleWindows.count) { return; }
+    Auto window = self.scheduleWindows[(NSUInteger)row];
+    if(sender.state == NSControlStateValueOn)
+    {
+        [window removeObjectForKey:KYAScheduleWindowKeyEnabled];
+    }
+    else
+    {
+        window[KYAScheduleWindowKeyEnabled] = @NO;
+    }
+    [self persistScheduleWindows];
+    [self.scheduleTableView reloadDataForRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row]
+                                      columnIndexes:[NSIndexSet indexSetWithIndex:0]];
+}
 
 - (void)scheduleWeekdayControlChanged:(NSSegmentedControl *)sender
 {

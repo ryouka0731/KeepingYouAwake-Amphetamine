@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 KYA_EXPORT NSString * const KYAScheduleWindowKeyWeekdays;     // NSArray<NSNumber*>, 1..7 (1=Sunday)
 KYA_EXPORT NSString * const KYAScheduleWindowKeyStartMinutes; // NSNumber, 0..1439
 KYA_EXPORT NSString * const KYAScheduleWindowKeyEndMinutes;   // NSNumber, 0..1439
+KYA_EXPORT NSString * const KYAScheduleWindowKeyEnabled;      // optional NSNumber (BOOL); absent = enabled
 
 @protocol KYAScheduleMonitorDelegate;
 
