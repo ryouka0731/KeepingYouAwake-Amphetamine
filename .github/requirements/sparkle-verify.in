@@ -1,0 +1,5 @@
+# Deps for the "Sparkle appcast smoke" CI job (Ed25519 verify).
+# Regenerate the pinned, hashed lock with:
+#   uv pip compile --universal --python-version 3.12 --generate-hashes \
+#     .github/requirements/sparkle-verify.in -o .github/requirements/sparkle-verify.txt
+cryptography
