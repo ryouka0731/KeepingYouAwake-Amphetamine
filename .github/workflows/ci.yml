@@ -329,18 +329,8 @@ jobs:
           fi
           echo "Found app at $APP"
 
-          # The app must ship an icon. AppIcon.icon only compiles with
-          # Xcode 26, so builds with older Xcode rely on AppIcon.icns.
-          ICON_FILE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist" 2>/dev/null || true)"
-          if [ "$ICON_FILE" != "AppIcon" ]; then
-            echo "::error::Built app's Info.plist has CFBundleIconFile='$ICON_FILE' (expected 'AppIcon')"
-            exit 1
-          fi
-          if [ ! -s "$APP/Contents/Resources/AppIcon.icns" ]; then
-            echo "::error::Built app has no Contents/Resources/AppIcon.icns (missing or empty)"
-            exit 1
-          fi
-          echo "PASS: app bundle ships AppIcon.icns"
+          # The app must ship an icon (see scripts/check-app-icon.sh).
+          scripts/check-app-icon.sh "$APP"
 
           # Register the app with LaunchServices so the URL scheme resolves
           /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
