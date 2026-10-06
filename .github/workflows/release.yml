@@ -137,7 +137,13 @@ jobs:
           echo "Found: $APP"
           echo "size: $(du -sh "$APP" | awk '{print $1}')"
           # Never ship an icon-less app (see scripts/check-app-icon.sh).
-          scripts/check-app-icon.sh "$APP"
+          # A backfill of a tag older than the check (workflow_dispatch)
+          # has neither the script nor AppIcon.icns; build it as it was.
+          if [ -x scripts/check-app-icon.sh ]; then
+            scripts/check-app-icon.sh "$APP"
+          else
+            echo "::warning::scripts/check-app-icon.sh not in this tag; skipping the app-icon check"
+          fi
           echo "path=$APP" >> "$GITHUB_OUTPUT"
 
       - name: Ad-hoc sign the .app
